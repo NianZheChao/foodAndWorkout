@@ -1,5 +1,19 @@
+# 本机 / 编辑器产生的临时产物：不参与多端同步
 __pycache__/
 *.pyc
 .DS_Store
 Thumbs.db
 desktop.ini
+.vscode/
+.idea/
+.obsidian/
+*.tmp
+*.bak
+*~
+
+# 设备本地笔记：想在单台设备上留不入库的内容，用 .local.md 后缀
+*.local.md
+local/
+
+# 数据目录必须纳入同步，不要给它们加忽略规则：
+# records/ plans/ reviews/ data/ profile.md targets.md

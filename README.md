@@ -55,12 +55,36 @@ powershell -ExecutionPolicy Bypass -File install-skills.ps1   # Windows
 bash install-skills.sh                                        # macOS / Linux
 ```
 
-- 日常就是 `git pull` / `git commit` / `git push`。
+- 日常改动的 commit / push 由 skill 在写完后自动完成，流程见下面「本地改动同步」。
 - `skills/` 是 skill 的唯一源；改完 skill 要重跑安装脚本才生效。
 - 冲突通常只出现在同一天两台设备都写了同一份记录文件时，按日期手工合并即可。
 - 换设备后留意 `profile.md` 顶部字段与 `records/` 里的体重是否最新。
 
 > 仓库若是公开的，体重、年龄、作息等个人信息会公开可见。介意的话把仓库改成私有，或把 `profile.md` 里的敏感数字挪到一个不提交的本地文件。
+
+## 本地改动同步（自动 commit + push）
+
+skill 每写完一批文件（记录 / 计划 / 复盘）就把改动同步到 GitHub；只 commit 不 push 的话，另一台设备拿到的是旧数据。
+
+```bash
+git add <本次改动的路径>
+git commit -m "<log|plan|review>: <日期或周号> <摘要>"
+git pull --rebase --autostash
+git push
+```
+
+- **只加本次动过的文件**（如 `records/2026-10-10.md`、`data/foods.csv`、`profile.md`），不要 `git add -A`，免得把无关改动一起提交。
+- commit message 形如 `log: 2026-10-10 摄入与训练`、`plan: 2026-W42 周计划`、`review: 2026-W41 复盘`。
+- 开始新一轮记录前（尤其刚换设备）先 `git pull --rebase --autostash`。
+- **暂存区为空就直接结束**，没有改动不需要空提交。
+
+停止条件——满足任一条就停下，把情况报给用户，不要自行处置：
+
+- `pull --rebase` 出现冲突。只有同一天在两台设备上写了同一份记录文件才会发生；保留双方内容后手工合并，或交给用户决定。
+- `push` 被拒且不是 fast-forward：先 `pull --rebase` 再试一次，仍失败就停。
+- 任何情况下都不要 `push --force`、不要 `git reset --hard`、不要删改 `records/` 里的历史文件。
+
+多端同步靠「数据文件全部入库 + 本机产物全部忽略」：`.gitignore` 只排除缓存、编辑器目录和 `*.local.md` 这类本机内容；`records/`、`plans/`、`reviews/`、`data/`、`profile.md`、`targets.md` 一律参与同步，不要给它们加忽略规则。
 
 ## 记录文件格式契约
 

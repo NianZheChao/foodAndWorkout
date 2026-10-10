@@ -38,6 +38,10 @@ python scripts/nutrition.py tdee --days 28
 2. 需要改目标时，改 `targets.md` 的 front-matter，**并同时**在"校准记录"表补一行（日期 / 实测 TDEE / 调整前后 / 依据）。
 3. 明确区分事实（记录里的数字）与推断（你的解释），把推断标出来。
 
+## 同步
+
+写完 `reviews/` 与 `targets.md` 之后，按 `README.md` 的「本地改动同步」commit 并 push（`review: <周号> 复盘`）。冲突或推送被拒就停下报告，不要 `push --force`。
+
 ## 边界
 
 - 不做医疗判断。出现持续疲劳、睡眠障碍、月经异常、关节疼痛等情况，建议就医或咨询注册营养师，而不是继续加训练量。

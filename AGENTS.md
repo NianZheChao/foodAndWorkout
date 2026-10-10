@@ -33,6 +33,10 @@
 - `profile.md` 记录的是长期事实，不要因为单次表现就改它。
 - 推荐类输出写进 `plans/`，复盘类输出写进 `reviews/`，不要混进 `records/`。
 
+## 同步
+
+写完记录 / 计划 / 复盘后，按 `README.md` 的「本地改动同步」把改动 commit + push 到 GitHub：只 `git add` 本次动过的文件，`git pull --rebase --autostash` 之后再 `git push`。遇到冲突或推送被拒就停下报告，不要 `push --force`，也不要回退历史。
+
 ## skill 选择
 
 | 用户意图 | 使用 |

@@ -18,6 +18,7 @@ description: 在减脂增肌工作区（foodAndWorkout：含 README.md 格式契
 3. 换算营养：`python scripts/nutrition.py lookup <食材>`，或 `lookup <食材> --g <克数>` 直接换算。库中没有的食材先补进 `data/foods.csv` 并在 `note` 列注明来源。
 4. 收尾：`python scripts/nutrition.py check` 通过后，运行 `python scripts/nutrition.py totals --write`。
 5. 把汇总回报用户：热量、蛋白与目标的差额、还差多少。
+6. 同步：按 `README.md` 的「本地改动同步」把本次动过的文件（`records/<日期>.md`，必要时 `data/foods.csv`、`profile.md`）commit 并 push 到 GitHub（`log: <日期> <摘要>`）。冲突或推送被拒就停下报告，不要 `push --force`。
 
 ## 换算要点
 
