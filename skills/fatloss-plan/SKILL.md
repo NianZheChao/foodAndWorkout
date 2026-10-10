@@ -14,7 +14,7 @@ description: 在减脂增肌工作区（foodAndWorkout：含 README.md 格式契
 ## 先取数据
 
 ```bash
-python scripts/nutrition.py trend --days 14    # 体重趋势、达标率、各肌群周组数
+python scripts/nutrition.py trend --days 14    # 体重趋势、达标率、各肌群周组数与容量负荷、训练明细
 python scripts/nutrition.py totals --write     # 今天已摄入多少、还差多少
 python scripts/nutrition.py lookup <食材>       # 食材换算
 ```

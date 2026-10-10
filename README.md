@@ -95,12 +95,21 @@ git push
 ```yaml
 date: 2026-10-10      # 必填，必须与文件名一致
 weekday: 六
-weight_kg: 72.4       # 留空表示当天没有称重，不要为了填满而臆造
+weight_am_kg: 72.4    # 晨起空腹（排尿后）体重，趋势与 TDEE 的唯一基准
+weight_pm_kg: 73.1    # 睡前体重，只用于算夜间净流失；没称就留空
 sleep_hours: 7.5
 energy: 4             # 主观精力 1-5
 soreness: 2           # 肌肉酸痛 1-5
 water_ml: 2200
 ```
+
+### 体重口径
+
+- `weight_am_kg` 是晨重、`weight_pm_kg` 是睡前重，两个字段各自独立；没称就留空，不要用另一个补。
+- **晨重是趋势与 TDEE 的唯一基准**：`trend` 的均线、`tdee` 的斜率都只看晨重。睡前体重只用来算「夜间净流失」，不参与均线。
+- 早期记录里的 `weight_kg` 作为兼容字段保留：某天没有晨重时才用它兜底，`trend` 会给它标 `*`。
+- **夜间净流失 = 当天晨重 − 前一天睡前重**。它反映的是水分与肠内容物，**不是"夜间代谢"**：一夜 600 kcal 的消耗，真正以质量离开身体的只有约 200 g（呼出的 CO₂），而水分日常波动 ±500 g，能量那一份被淹没在噪声里。
+- 同日「睡前 − 晨重」= 当天摄入的食物与液体净质量，可以用来粗查是否漏记。
 
 ### 摄入表
 
@@ -116,8 +125,10 @@ water_ml: 2200
 
 - **一行 = 一个动作。**
 - `目标肌群`多个肌群用 `/` 分隔（如 `胸/三头`）。
-- `组x次x重量`形如 `4x8x60kg`；不按此格式填写时脚本按 1 组统计。
+- `组x次x重量`形如 `4x8x60kg`，自重动作写 `3x12x自重`；不按此格式填写时脚本按 1 组统计。
+- 脚本用这一列算**容量负荷**（组×次×重量，自重不计），它是力量训练的主指标；`trend` 会按动作列出区间容量，同名动作跨窗口对比就是渐进超负荷。
 - `类型`建议取值：力量 / 有氧 / 球类 / 拉伸 / 其他。
+- **有氧与力量分开评估**：有氧主要看热量，`估算消耗(kcal) = MET × 3.5 × 体重(kg) / 200 × 时长(min)`，所以时长必填，缺了就算不出；力量主要看肌群刺激（每周有效组数、容量负荷、RPE），热量不必精算。两者都不计回热量目标，只用于观察活动量。
 
 ### AUTO 区块
 
@@ -143,7 +154,7 @@ water_ml: 2200
 python scripts/nutrition.py init [--write]             # 首次估算热量与宏量目标
 python scripts/nutrition.py new [--date D] [--force]   # 创建当日记录，幂等
 python scripts/nutrition.py totals [D] [--write]       # 当日汇总 + 对比目标
-python scripts/nutrition.py trend [--days 14]          # 趋势、7 日均线、达标率、肌群组数
+python scripts/nutrition.py trend [--days 14]          # 趋势、7 日均线、达标率、肌群组数与容量负荷、训练明细
 python scripts/nutrition.py tdee [--days 28]           # 由摄入与体重变化反推 TDEE
 python scripts/nutrition.py lookup 鸡胸 --g 200        # 查询食材营养
 python scripts/nutrition.py check [D] [--all]          # 校验格式与数值

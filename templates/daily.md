@@ -1,7 +1,8 @@
 ---
 date: {{DATE}}
 weekday: {{WEEKDAY}}
-weight_kg:
+weight_am_kg:
+weight_pm_kg:
 sleep_hours:
 energy:
 soreness:

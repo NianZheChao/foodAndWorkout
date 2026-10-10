@@ -38,11 +38,13 @@ ROW_RE = re.compile(r'^\s*\|(.*)\|\s*$')
 SEP_CELL_RE = re.compile(r'^:?-{2,}:?$')
 NUM_RE = re.compile(r'-?\d+(?:\.\d+)?')
 STRICT_NUM_RE = re.compile(r'^\s*(-?\d+(?:\.\d+)?)\s*(kg|g|ml|l|h|min|kcal)?\s*$', re.I)
-SETS_RE = re.compile(r'^(\d+)\s*[xх×*]\s*(\d+)\s*[xх×*]\s*([\d.]+)')
+SETS_RE = re.compile(r'^(\d+)\s*[xх×*]\s*(\d+)\s*[xх×*]\s*([\d.]+|自重|徒手)')
 AUTO_RE = re.compile(r'(<!-- AUTO:SUMMARY:BEGIN -->)(.*?)(<!-- AUTO:SUMMARY:END -->)', re.S)
 SEC_RE = re.compile(r'^##[ \t]+(.*?)[ \t]*$')
 
 WEIGHT_MIN, WEIGHT_MAX = 25.0, 300.0
+WEIGHT_AM, WEIGHT_PM = 'weight_am_kg', 'weight_pm_kg'
+BODYWEIGHT_MARKS = ('自重', '徒手')
 
 
 def out(text=''):
@@ -50,7 +52,8 @@ def out(text=''):
 
 
 def read_text(path):
-    with open(path, 'r', encoding='utf-8') as handle:
+    # utf-8-sig：兼容 Windows 编辑器写出的 BOM，无 BOM 时行为与 utf-8 相同
+    with open(path, 'r', encoding='utf-8-sig') as handle:
         return handle.read()
 
 
@@ -87,6 +90,37 @@ def strict_num(value):
 
 def plausible_weight(value):
     return value is not None and WEIGHT_MIN <= value <= WEIGHT_MAX
+
+
+def day_weights(day):
+    """返回 (晨重, 睡前重, 旧字段 weight_kg)；缺失为 None。"""
+    front = day['front']
+    return (num(front.get(WEIGHT_AM)), num(front.get(WEIGHT_PM)),
+            num(front.get('weight_kg')))
+
+
+def trend_weight(day):
+    """趋势与 TDEE 的唯一基准：优先晨重，旧记录退回 weight_kg。返回 (值, 口径)。"""
+    am, _, legacy = day_weights(day)
+    if plausible_weight(am):
+        return am, 'am'
+    if plausible_weight(legacy):
+        return legacy, 'legacy'
+    return None, ''
+
+
+def set_load(raw_volume):
+    """解析「组x次x重量」，返回 (组数, 次数, 重量kg, 容量kg)。
+
+    自重动作格式正确但重量、容量为 None；格式不符时整体返回 None。
+    """
+    match = SETS_RE.match(raw_volume.strip()) if raw_volume else None
+    if not match:
+        return None
+    sets, reps = int(match.group(1)), int(match.group(2))
+    token = match.group(3)
+    weight = None if token in BODYWEIGHT_MARKS else num(token)
+    return sets, reps, weight, (sets * reps * weight if weight else None)
 
 
 def theil_sen(xs, ys):
@@ -217,7 +251,9 @@ def load_day(date):
                 if value is not None:
                     intake[key] += value
             rows += 1
-    training = {'minutes': 0.0, 'burn': 0.0, 'sets': 0, 'muscles': {}, 'rows': 0, 'rpe': []}
+    training = {'minutes': 0.0, 'burn': 0.0, 'sets': 0, 'muscles': {}, 'rows': 0, 'rpe': [],
+                'muscle_load': {}, 'load': 0.0, 'loaded_sets': 0, 'bodyweight_sets': 0,
+                'moves': {}}
     if trn_table:
         index = {key: col(trn_table['headers'], token) for key, token in TRAIN_COLS}
         for row in trn_table['rows']:
@@ -231,14 +267,32 @@ def load_day(date):
             burn = num(cell(row, index['burn']))
             if burn:
                 training['burn'] += burn
-            raw_sets = cell(row, index['volume'])
-            match = SETS_RE.match(raw_sets.strip()) if raw_sets else None
-            sets = int(match.group(1)) if match else 1
+            raw_sets = cell(row, index['volume']).strip()
+            parsed = set_load(raw_sets)
+            sets = parsed[0] if parsed else 1
+            load = parsed[3] if parsed else None
             training['sets'] += sets
+            if load:
+                training['load'] += load
+                training['loaded_sets'] += sets
+            else:
+                training['bodyweight_sets'] += sets
+            muscle_names = []
             for part in re.split(r'[、,，/＋+]', cell(row, index['muscles'])):
                 part = part.strip()
                 if part:
+                    muscle_names.append(part)
                     training['muscles'][part] = training['muscles'].get(part, 0) + sets
+                    if load:
+                        training['muscle_load'][part] = training['muscle_load'].get(part, 0.0) + load
+            move = cell(row, index['move']).strip()
+            if move:
+                entry = training['moves'].setdefault(
+                    move, {'sets': 0, 'load': 0.0, 'volume': '', 'muscles': ''})
+                entry['sets'] += sets
+                entry['load'] += load or 0.0
+                entry['volume'] = raw_sets or entry['volume']
+                entry['muscles'] = '/'.join(muscle_names) or entry['muscles']
     return {'date': date, 'path': path, 'front': front, 'intake': intake,
             'rows': rows, 'training': training, 'text': text,
             'inc_table': inc_table, 'trn_table': trn_table}
@@ -306,13 +360,34 @@ def summary_lines(date, day, targets):
                      % (label, fmt(got), prefix, fmt(want), fmt_signed(diff)))
 
     train = day['training']
+    am, pm, legacy = day_weights(day)
+    weight_parts = []
+    if am is not None:
+        weight_parts.append('晨重 %s kg' % fmt(am))
+    elif legacy is not None:
+        weight_parts.append('旧字段体重 %s kg（未区分晨晚）' % fmt(legacy))
+    if pm is not None:
+        weight_parts.append('睡前 %s kg' % fmt(pm))
+    if am is not None and pm is not None:
+        weight_parts.append('当日净增 %s kg' % fmt_signed(pm - am))
     lines.append('')
+    if weight_parts:
+        lines.append('**体重**：%s' % ' · '.join(weight_parts))
+        lines.append('')
     if train['rows']:
+        pieces = ['%d 个动作' % train['rows']]
+        if train['minutes']:
+            pieces.append('%s 分钟' % fmt(train['minutes']))
+        pieces.append('合计 %d 组' % train['sets'])
+        if train['load']:
+            pieces.append('容量负荷 %s kg' % fmt(train['load']))
+        if train['bodyweight_sets']:
+            pieces.append('自重 %d 组' % train['bodyweight_sets'])
+        pieces.append('估算消耗 %s kcal' % fmt(train['burn']))
+        pieces.append('RPE %s' % (fmt(sum(train['rpe']) / len(train['rpe']))
+                                  if train['rpe'] else '-'))
+        lines.append('**训练**：' + ' · '.join(pieces))
         muscles = '、'.join('%s %d组' % (k, v) for k, v in train['muscles'].items())
-        lines.append('**训练**：%d 个动作 · %s 分钟 · 合计 %d 组 · 估算消耗 %s kcal · RPE %s'
-                     % (train['rows'], fmt(train['minutes']), train['sets'],
-                        fmt(train['burn']),
-                        fmt(sum(train['rpe']) / len(train['rpe'])) if train['rpe'] else '-'))
         if muscles:
             lines.append('**涉及肌群**：%s' % muscles)
     else:
@@ -361,8 +436,16 @@ def cmd_new(args):
     previous = [d for d in record_dates() if d < date]
     if previous:
         last = load_day(previous[-1])
-        weight = last['front'].get('weight_kg', '') if last else ''
-        out('上一记录日：%s%s' % (previous[-1], ('（体重 %s kg）' % weight) if weight else ''))
+        label = ''
+        if last:
+            am, pm, legacy = day_weights(last)
+            if am is not None:
+                label = '（晨重 %s kg）' % fmt(am)
+            elif legacy is not None:
+                label = '（体重 %s kg，旧字段）' % fmt(legacy)
+            elif pm is not None:
+                label = '（睡前 %s kg）' % fmt(pm)
+        out('上一记录日：%s%s' % (previous[-1], label))
     targets = load_targets()
     target = targets.get('kcal_target')
     out('每日热量目标：%s' % ('%s kcal' % target if target else '未设置，先完成首次校准'))
@@ -395,31 +478,88 @@ def cmd_totals(args):
     return 0
 
 
+def training_detail(days):
+    """按动作汇总区间内的容量负荷，用于看同一动作是否在渐进超负荷。"""
+    moves = {}
+    for day in days:
+        for name, entry in day['training']['moves'].items():
+            item = moves.setdefault(name, {'dates': [], 'sets': 0, 'load': 0.0,
+                                           'volume': '', 'muscles': ''})
+            item['dates'].append(day['date'])
+            item['sets'] += entry['sets']
+            item['load'] += entry['load']
+            item['volume'] = entry['volume'] or item['volume']
+            item['muscles'] = entry['muscles'] or item['muscles']
+    if not moves:
+        return '**训练明细**：区间内无训练记录。'
+    lines = ['**训练明细**', '',
+             '| 动作 | 目标肌群 | 出现 | 组数 | 最近一次 | 区间容量(kg) |',
+             '| --- | --- | ---: | ---: | --- | ---: |']
+    for name, item in sorted(moves.items(), key=lambda kv: (-kv[1]['load'], kv[0])):
+        lines.append('| %s | %s | %d 次 | %d | %s | %s |' % (
+            name, item['muscles'] or '-', len(item['dates']), item['sets'],
+            item['volume'] or '-', fmt(item['load']) if item['load'] else '-'))
+    lines.append('')
+    lines.append('区间容量按窗口内同名动作求和：跑 `trend --days 7` 与 `--days 14` 对比同一动作的容量，'
+                 '就是渐进超负荷的量化视角（自重动作不计容量）。')
+    return '\n'.join(lines)
+
+
 def cmd_trend(args):
     dates = [d for d in record_dates() if d <= args.end][-args.days:]
     if not dates:
         out('没有可统计的记录。')
         return 1
     days = [load_day(d) for d in dates]
-    weights = {}
+    weights, legacy_days, pm_only = {}, [], []
     for day in days:
-        weight = num(day['front'].get('weight_kg'))
-        if weight and plausible_weight(weight):
+        weight, basis = trend_weight(day)
+        _, pm, _ = day_weights(day)
+        if weight:
             weights[day['date']] = weight
-    lines = ['| 日期 | 体重(kg) | %d日均线 | 热量 | 蛋白(g) | 脂肪(g) | 碳水(g) | 训练(min) | 组数 |'
+            if basis == 'legacy':
+                legacy_days.append(day['date'])
+        elif plausible_weight(pm):
+            pm_only.append(day['date'])
+    lines = ['| 日期 | 晨重(kg) | 睡前(kg) | 夜间净流失 | %d日均线 | 热量 | 蛋白(g) | 脂肪(g) | 碳水(g) | 训练(min) | 组数 |'
              % args.window,
-             '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |']
+             '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |']
     for day in days:
         train = day['training']
-        lines.append('| %s | %s | %s | %s | %s | %s | %s | %s | %s |' % (
-            day['date'], fmt(weights.get(day['date'])),
+        am, pm, legacy = day_weights(day)
+        shown, basis = trend_weight(day)
+        if not plausible_weight(pm):
+            pm = None
+        overnight = None
+        if plausible_weight(am):
+            prev = (dt.date.fromisoformat(day['date']) - dt.timedelta(days=1)).isoformat()
+            prev_day = load_day(prev)
+            if prev_day:
+                _, prev_pm, _ = day_weights(prev_day)
+                if plausible_weight(prev_pm):
+                    overnight = am - prev_pm
+        lines.append('| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |' % (
+            day['date'],
+            ('%s*' % fmt(shown)) if basis == 'legacy' else fmt(shown),
+            fmt(pm), fmt_signed(overnight),
             fmt(moving_average(weights, day['date'], args.window)),
             fmt(day['intake']['kcal']), fmt(day['intake']['protein']),
             fmt(day['intake']['fat']), fmt(day['intake']['carb']),
             fmt(train['minutes']) if train['minutes'] else '-', train['sets'] or '-'))
     out('\n'.join(lines))
+    notes = []
+    if legacy_days:
+        notes.append('- 带 `*` 的是旧字段 `weight_kg`（没有晨重的历史记录，口径不明），只作兜底。')
+    if pm_only:
+        notes.append('- 只有睡前体重的日期（%s）：不进入均线与 TDEE，需要补晨重。'
+                     % '、'.join(pm_only))
+    if notes:
+        out('')
+        out('\n'.join(notes))
     out('')
     out(trend_summary(dates, days, weights, load_targets()))
+    out('')
+    out(training_detail(days))
     return 0
 
 
@@ -456,22 +596,35 @@ def trend_summary(dates, days, weights, targets):
     train_days = [d for d in days if d['training']['rows']]
     if train_days:
         total_minutes = sum(d['training']['minutes'] for d in train_days)
+        total_sets = sum(d['training']['sets'] for d in train_days)
+        total_load = sum(d['training']['load'] for d in train_days)
+        extras = ' · 合计 %d 组' % total_sets
+        if total_load:
+            extras += ' · 容量负荷 %s kg' % fmt(total_load)
         weeks = (len(dates) / 7.0) if len(dates) >= 7 else None
         if weeks:
-            lines.append('- 训练：%d 天 · 合计 %s 分钟 · 周均 %.1f 次'
-                         % (len(train_days), fmt(total_minutes), len(train_days) / weeks))
+            lines.append('- 训练：%d 天 · 合计 %s 分钟%s · 周均 %.1f 次'
+                         % (len(train_days), fmt(total_minutes), extras,
+                            len(train_days) / weeks))
         else:
-            lines.append('- 训练：%d 天 · 合计 %s 分钟（区间不足 7 天，不外推周均）'
-                         % (len(train_days), fmt(total_minutes)))
-        muscles = {}
+            lines.append('- 训练：%d 天 · 合计 %s 分钟%s（区间不足 7 天，不外推周均）'
+                         % (len(train_days), fmt(total_minutes), extras))
+        muscles, muscle_load = {}, {}
         for day in train_days:
             for name, sets in day['training']['muscles'].items():
                 muscles[name] = muscles.get(name, 0) + sets
+            for name, load in day['training']['muscle_load'].items():
+                muscle_load[name] = muscle_load.get(name, 0.0) + load
         if muscles:
+            def load_suffix(name):
+                load = muscle_load.get(name)
+                return '（容量 %s kg）' % fmt(load) if load else ''
+
             ranked = sorted(muscles.items(), key=lambda kv: -kv[1])
             if weeks:
                 lines.append('- 各肌群组数：%s'
-                             % '、'.join('%s %.1f 组/周' % (k, v / weeks) for k, v in ranked))
+                             % '、'.join('%s %.1f 组/周%s' % (k, v / weeks, load_suffix(k))
+                                         for k, v in ranked))
                 floor = num(targets.get('weekly_sets_per_muscle'))
                 if floor:
                     low = [k for k, v in muscles.items() if v / weeks < floor]
@@ -479,7 +632,8 @@ def trend_summary(dates, days, weights, targets):
                         lines.append('- 低于每周有效组数下限（%s 组）：%s' % (fmt(floor), '、'.join(low)))
             else:
                 lines.append('- 各肌群组数（区间合计）：%s'
-                             % '、'.join('%s %d 组' % (k, v) for k, v in ranked))
+                             % '、'.join('%s %d 组%s' % (k, v, load_suffix(k))
+                                         for k, v in ranked))
     else:
         lines.append('- 训练：区间内无记录')
     return '\n'.join(lines)
@@ -489,11 +643,13 @@ def cmd_tdee(args):
     dates = [d for d in record_dates() if d <= args.end][-args.days:]
     points = []
     base = None
+    basis_days = {'am': 0, 'legacy': 0}
     for date in dates:
         day = load_day(date)
-        weight = num(day['front'].get('weight_kg'))
-        if not day['rows'] or not plausible_weight(weight) or day['intake']['kcal'] <= 0:
+        weight, basis = trend_weight(day)
+        if not day['rows'] or weight is None or day['intake']['kcal'] <= 0:
             continue
+        basis_days[basis] += 1
         current = dt.date.fromisoformat(date)
         if base is None:
             base = current
@@ -521,6 +677,9 @@ def cmd_tdee(args):
     rate = num(targets.get('target_rate_kg_per_week'))
     lines = ['| 指标 | 数值 |', '| --- | ---: |',
              '| 样本 | %d 天（跨度 %d 天） |' % (len(points), span),
+             '| 体重口径 | 晨重 %d 天%s |' % (
+                 basis_days['am'],
+                 '，旧字段 weight_kg %d 天' % basis_days['legacy'] if basis_days['legacy'] else ''),
              '| 平均摄入 | %s kcal |' % fmt(mean_intake),
              '| 体重斜率（稳健） | %.3f kg/天 |' % slope,
              '| 体重斜率（最小二乘，仅参考） | %.3f kg/天 |' % least_squares,
@@ -726,6 +885,8 @@ def cmd_check(args):
         elif day['front'].get('date') != date:
             issues.append('front-matter 的 date 与文件名不一致')
         for key, low, high in (('weight_kg', WEIGHT_MIN, WEIGHT_MAX),
+                               (WEIGHT_AM, WEIGHT_MIN, WEIGHT_MAX),
+                               (WEIGHT_PM, WEIGHT_MIN, WEIGHT_MAX),
                                ('sleep_hours', 0, 24),
                                ('energy', 1, 5),
                                ('soreness', 1, 5),
@@ -739,6 +900,11 @@ def cmd_check(args):
             elif not low <= value <= high:
                 issues.append('front-matter %s 超出合理范围 %s-%s：%s'
                               % (key, fmt(low), fmt(high), fmt(value)))
+        am, pm, _ = day_weights(day)
+        if (plausible_weight(am) and plausible_weight(pm) and abs(pm - am) > 3):
+            warnings += 1
+            out('%s: 晨重 %s 与睡前 %s 相差 %s kg，检查单位或输入'
+                % (date, fmt(am), fmt(pm), fmt(abs(pm - am))))
         inc_table, trn_table = day['inc_table'], day['trn_table']
         if inc_table is None:
             issues.append('缺少「摄入」表')
