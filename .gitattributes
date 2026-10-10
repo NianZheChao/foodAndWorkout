@@ -1,0 +1,7 @@
+# 在 Windows 与 macOS/Linux 之间同步时避免行尾噪音
+* text=auto
+*.sh  text eol=lf
+*.ps1 text eol=crlf
+*.py  text eol=lf
+*.md  text eol=lf
+*.csv text eol=lf
