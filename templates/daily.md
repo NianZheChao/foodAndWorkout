@@ -6,7 +6,6 @@ weight_pm_kg:
 sleep_hours:
 energy:
 soreness:
-water_ml:
 ---
 
 # {{DATE}} {{WEEKDAY}} 每日记录
