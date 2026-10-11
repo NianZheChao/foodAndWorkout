@@ -17,7 +17,7 @@ description: 在减脂增肌工作区（foodAndWorkout：含 README.md 格式契
 2. 把用户的描述拆成结构化数据：每一餐**每个食材一行**，每个动作一行。`菜品/做法`列写清菜名与做法（如"香煎""清炒""红烧"），同一道菜的多个食材共用同一个值。
 3. 换算营养：`python scripts/nutrition.py lookup <食材>`，或 `lookup <食材> --g <克数>` 直接换算。库中没有的食材先补进 `data/foods.csv` 并在 `note` 列注明来源。
 4. 收尾：`python scripts/nutrition.py check` 通过后，运行 `python scripts/nutrition.py totals --write`。
-5. 把汇总回报用户：热量、蛋白与目标的差额、还差多少。
+5. 把汇总回报用户：直接贴脚本产出的表（摄入 / 目标 / 差额 / **占比**），再点出热量与蛋白的占比以及还差多少。占比由脚本算，不要自己另算，也不要为了简洁省掉这一列。
 6. 同步：按 `README.md` 的「本地改动同步」把本次动过的文件（`records/<日期>.md`，必要时 `data/foods.csv`、`profile.md`）commit 并 push 到 GitHub（`log: <日期> <摘要>`）。冲突或推送被拒就停下报告，不要 `push --force`。
 7. 缺口确认：同步后把当天仍空着的字段列给用户，问清每一项要以什么形式补（见下）。不要默默留空，也不要替他判断某项"不重要"。
 

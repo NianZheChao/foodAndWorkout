@@ -349,15 +349,17 @@ def summary_lines(date, day, targets):
         ('纤维(g)', intake['fiber'], num(targets.get('fiber_target_g')), ''),
         ('钠(mg)', intake['sodium'], num(targets.get('sodium_max_mg')), 'max'),
     )
-    lines = ['| 项目 | 摄入 | 目标 | 差额 |', '| --- | ---: | ---: | ---: |']
+    lines = ['| 项目 | 摄入 | 目标 | 差额 | 占比 |',
+             '| --- | ---: | ---: | ---: | ---: |']
     for label, got, want, mode in pairs:
         if want is None:
-            lines.append('| %s | %s | - | - |' % (label, fmt(got)))
+            lines.append('| %s | %s | - | - | - |' % (label, fmt(got)))
             continue
         diff = got - want
         prefix = '≤' if mode == 'max' else ''
-        lines.append('| %s | %s | %s%s | %s |'
-                     % (label, fmt(got), prefix, fmt(want), fmt_signed(diff)))
+        share = '%.0f%%' % (got / want * 100) if want else '-'
+        lines.append('| %s | %s | %s%s | %s | %s |'
+                     % (label, fmt(got), prefix, fmt(want), fmt_signed(diff), share))
 
     train = day['training']
     am, pm, legacy = day_weights(day)
