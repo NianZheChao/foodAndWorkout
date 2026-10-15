@@ -5,6 +5,7 @@
 
 - 需求文档：`docs/pwa-requirements.md`
 - 设计文档：`docs/pwa-design.md`
+- 开发进度与交接：`docs/pwa-progress.md`
 - 数据格式契约（工作区）：`README.md`
 
 ## 快速开始

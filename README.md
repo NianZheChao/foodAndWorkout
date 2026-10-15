@@ -21,7 +21,7 @@
 | `templates/` | 各类文件的模板；`example-day.md` 是一份填好的示例 |
 | `scripts/nutrition.py` | 统计与校验工具 |
 | `skills/` | 三套 skill 的源文件（本仓库为准），用 `install-skills.ps1` / `install-skills.sh` 安装到 Codex 技能目录 |
-| `docs/` | 需求文档与技术设计文档 |
+| `docs/` | 需求文档、技术设计文档、开发进度与交接（`pwa-progress.md`） |
 | `app/` | 「薄肌计划」PWA 应用源码：无后端、数据存浏览器 IndexedDB，详见 `app/README.md` |
 
 仓库内不写死任何绝对路径：脚本按自身位置定位工作区，所以克隆到哪个目录都能直接用。
