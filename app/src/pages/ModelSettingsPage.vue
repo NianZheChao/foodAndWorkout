@@ -180,6 +180,26 @@ function formatTime(value?: number): string {
     </div>
 
     <div class="card">
+      <h2 class="card-title">连不上 / 报错时怎么排查</h2>
+      <ul class="hint-list">
+        <li><strong>400 不认模型名</strong>：填服务商的官方模型名。DeepSeek 是
+          <code>deepseek-chat</code>（通用）或 <code>deepseek-reasoner</code>（推理），
+          没有 <code>deepseek-flash</code> 这个名字。</li>
+        <li><strong>200 但正文为空</strong>：多半是两件事 —— 模型名写错，或者服务商的 JSON 模式要求
+          提示词里出现 <code>json</code> 字样（DeepSeek 有这个硬要求）。本应用已经按这个要求写提示词，
+          并且遇到空正文会自动去掉 <code>response_format</code> 重试一次。</li>
+        <li><strong>正文被 max_tokens 截断</strong>：推理型模型会先把预算花在思考上，正文就空了。
+          探活给的是 128 tokens；正式任务按任务类型给上限（见「用量」里的估算）。</li>
+        <li><strong>404</strong>：地址不对。DeepSeek 可以只填 <code>https://api.deepseek.com</code>，
+          也可以填 <code>https://api.deepseek.com/v1</code>；填整条 <code>.../chat/completions</code> 也认。</li>
+        <li><strong>401/403</strong>：token 不对或没有权限；浏览器直连要求服务商允许跨域（CORS）。</li>
+      </ul>
+      <p class="muted">
+        测试结果会写在上面「上次测试」那一行；失败原因会尽量带出服务端的原话。
+      </p>
+    </div>
+
+    <div class="card">
       <h2 class="card-title">安全</h2>
       <ul class="hint-list">
         <li>token 只保存在本机 IndexedDB，不进导出包、不写日志、不在错误提示里回显。</li>

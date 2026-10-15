@@ -36,7 +36,8 @@ export const foodResolveTask: LlmTask<FoodResolveInput, FoodResolveOutput> = {
   version: 1,
   title: '解析食物营养',
   systemPrompt:
-    '你是中国食物成分数据助手。只输出 JSON，不要解释、不要 Markdown。每项按可食部每 100g（液体每 100ml）给出 kcal、protein_g、fat_g、carb_g、fiber_g、sodium_mg，取值贴近中国食物成分表。' +
+    // 提示词里要出现小写 `json`：DeepSeek 的 JSON 模式对此有硬要求，缺了会「200 但正文为空」
+    '你是中国食物成分数据助手。只输出 json（JSON），不要解释、不要 Markdown。每项按可食部每 100g（液体每 100ml）给出 kcal、protein_g、fat_g、carb_g、fiber_g、sodium_mg，取值贴近中国食物成分表。' +
     '拿不准就降低 confidence；查不到就把 matched 设为 false，绝不编造。' +
     '返回 {"items":[{"query":"原样回填输入文本","matched":true,"name":"规范名","category":"分类","unit":"100g","kcal":0,"protein_g":0,"fat_g":0,"carb_g":0,"fiber_g":0,"sodium_mg":0,"cooked_state":"生|熟|市售","edible_note":"","portions":[{"label":"1个","grams":50}],"source_note":"","confidence":"high|medium|low"}]}',
   buildPayload: (input) => ({

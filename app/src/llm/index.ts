@@ -166,6 +166,15 @@ export async function runTask<In, Out>(
         await saveModelConfig({ supportsJsonResponse: false })
         continue
       }
+      // 有的服务（DeepSeek 就是）在 JSON 模式下会「返回 200 但正文为空」：
+      // 同样按「这个接口的 JSON 模式不好用」处理，去掉 response_format 再试一次，
+      // 否则用户会卡在一个看不出原因的失败上（§6.8 的降级路径）。
+      if (error.kind === 'empty-response' && jsonResponse && !downgraded) {
+        jsonResponse = false
+        downgraded = true
+        await saveModelConfig({ supportsJsonResponse: false })
+        continue
+      }
       if (error.retriable && retriesLeft > 0) {
         retriesLeft -= 1
         await sleep(retryDelayMs * 2 ** (1 - retriesLeft))
@@ -230,8 +239,10 @@ export async function probeModel(config: ModelConfigRecord, deps: ClientDeps = {
   }
 
   const messages: ChatMessage[] = [
-    { role: 'system', content: '你是连通性测试助手，只输出 JSON。' },
-    { role: 'user', content: '{"ping":true}' }
+    // 提示词里必须**原样出现小写 json**：DeepSeek 的 JSON 模式有这个硬要求，
+    // 否则它会返回空内容 —— 探活本身因此失败，用户看到的是「接口返回了空内容」（2026-10-15 踩过）。
+    { role: 'system', content: '你是连通性测试助手，只回复一段 json，不要解释。' },
+    { role: 'user', content: '请回复这样的 json：{"ping":true}' }
   ]
   let supportsJsonResponse = config.supportsJsonResponse !== false
   let note = ''
@@ -244,7 +255,8 @@ export async function probeModel(config: ModelConfigRecord, deps: ClientDeps = {
           apiKey: config.apiKey,
           model: config.model,
           messages,
-          maxOutputTokens: 32,
+          // 32 对推理型模型太小：预算全花在思考上、正文就是空的。探活给宽一点。
+          maxOutputTokens: 128,
           jsonResponse: supportsJsonResponse,
           timeoutMs: Math.min(config.timeoutMs, 20_000)
         },

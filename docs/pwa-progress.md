@@ -6,7 +6,7 @@
 - 最后更新：2026-10-15
 - 应用版本：`0.1.0`（`app/package.json`）
 - 分支 / 最近提交：`main` / `5797bc2 feat: 报告摘要 + 周报月报 + 数字守卫 + 报告页（T3.1-T3.3）`
-- 质量基线（2026-10-15 实测）：`npm test` 32 文件 / 307 项（**有 1 个偶发失败的用例，7 次重跑里出现 3 次，见 §8**）；`npm run build`（含 `vue-tsc -b` 类型检查）通过
+- 质量基线（2026-10-15 实测）：`npm test` 32 文件 / 310 项（**有 1 个偶发失败的用例，7 次重跑里出现 3 次，见 §8**）；`npm run build`（含 `vue-tsc -b` 类型检查）通过
 
 ## 0. 三十秒速览
 
@@ -92,6 +92,15 @@
     任务注册表 `TASKS` 集中声明每个任务的输入构造、输出 schema 与 token 上限。
   - `types.ts`：`LlmTask` 契约（`buildPayload` / Zod schema / `outputLimitOf`）。
   验收 `app/tests/llm-client.spec.ts`、`app/tests/llm-run.spec.ts`。
+  **与 DeepSeek 这类实现的兼容（2026-10-15 实配踩坑）**：
+  ① 服务端在 `response_format=json_object` 下可能**返回 200 但正文为空**（DeepSeek 的官方要求是提示词里
+  必须出现 `json` 字样并给出示例，否则可能只回空白）——现在 `runTask` 遇到空正文会自动去掉
+  `response_format` 重试一次，并把 `supportsJsonResponse=false` 记进备忘录；
+  ② 三个任务的提示词都改成了含小写 `json`；探活的提示词同理，且 `max_tokens` 从 32 提到 128
+  （推理型模型会把预算全花在思考上，正文就空了）；
+  ③ 「空正文」的报错现在会区分「被 max_tokens 截断 / 只回了 reasoning_content / 其他」，
+  400 会把服务端原话带出来并提示官方模型名（`deepseek-chat` / `deepseek-reasoner`）；
+  ④ 模型设置页加了「连不上 / 报错时怎么排查」清单。
 - **`food.resolve` 食物补全**（`app/src/llm/tasks/foodResolve.ts` + `app/src/application/foodResolve.ts`）：
   本地优先 → 库里没有才问模型（一次 ≤10 条）→ 过范围校验 + 宏量自洽校验（酒精豁免）→
   可疑项要用户确认才落库 → 失败自动进 `pendingOps` 队列。
@@ -314,7 +323,7 @@ app/
 ```bash
 npm install
 npm run dev       # 本地开发服务器
-npm test          # 单元 / 对拍 / 组件测试（32 文件 / 307 项）
+npm test          # 单元 / 对拍 / 组件测试（32 文件 / 310 项）
 npm run build     # vue-tsc 类型检查 + 生产构建（产物 dist/）
 npm run preview   # 预览构建产物 —— 测 PWA 行为请用这个，不要用 dev
 npm run seed      # 从 ../data/foods.csv 重新生成内置食物库种子
@@ -399,6 +408,10 @@ npm run build
 - **静态扫描查不出「条件渲染的入口」**：`navigation-reachability.spec.ts` 只能发现一个引用都没有的
   孤岛页面；入口是否**真的渲染出来**要靠 DOM 断言（`pages.spec.ts` 里那两条「不依赖任何状态就能进」）。
   加新入口时两层都要想一遍。
+- **DeepSeek 的两个坑（2026-10-15 实配）**：① 官方的 JSON 模式要求提示词里出现 `json` 字样
+  并给出示例，否则会「200 但正文为空」；② 模型名要填官方名（`deepseek-chat` / `deepseek-reasoner`），
+  填了不存在的名字（例如把 Codex 这边的 `deepseek-flash` 抄过去）会 400。
+  排查顺序写进了模型设置页的提示卡，别再对着 200 响应猜。
 - **`tests/quick-log-page.spec.ts` 是偶发失败的**（2026-10-15 观察：7 次重跑里 3 次失败，且每次失败的用例不一定是同一个）。
   症状是断言 UI 文案时读到的还是旧内容：用例先用 `vi.waitFor` 等草稿落库，再用**一次** `flushPromises()` 就去读渲染结果，
   在 20 个 worker 并行抢资源时这次等待不够。修法很直接——把断言本身也包进 `vi.waitFor`。

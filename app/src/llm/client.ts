@@ -105,6 +105,10 @@ function classifyHttpError(status: number, body: string, imageRequest: boolean):
     if (/response_format|json_object|json mode/.test(lower)) {
       return new LlmError('unsupported-param', '接口不支持 response_format=json_object', { status, detail: body })
     }
+    // 服务端不认识模型名是配错里最常见的一种：把服务端的原话带出来，别让用户只看到 400
+    if (/model[\s"'_:,：]*(not\s*(exist|found|support)|invalid|unknown)|no such model|模型不存在|无此模型/i.test(body)) {
+      return new LlmError('bad-request', `服务端不认这个模型名（400）：${firstLine(body)}。请填官方模型名，例如 DeepSeek 是 deepseek-chat / deepseek-reasoner`, { status, detail: body })
+    }
     return new LlmError('bad-request', `请求被拒绝（400）：${firstLine(body)}`, { status, detail: body })
   }
   return new LlmError('http', `接口返回 ${status}：${firstLine(body)}`, { status, detail: body })
@@ -197,7 +201,26 @@ async function requestOnce(request: ChatRequest, deps: ClientDeps): Promise<Chat
   if (!text.trim()) {
     const apiError = (payload as { error?: { message?: string } }).error?.message
     if (apiError) throw new LlmError('http', `接口返回了错误：${firstLine(apiError)}`, { detail: apiError })
-    throw new LlmError('empty-response', '接口返回了空内容', { detail: rawText.slice(0, 200) })
+    const choice = (payload as { choices?: { finish_reason?: string; message?: { reasoning_content?: string } }[] })
+      .choices?.[0]
+    // 「空内容」几乎总是下面三种原因之一，直接把判断依据写进提示里，省得用户对着 200 响应猜
+    if (choice?.finish_reason === 'length') {
+      throw new LlmError(
+        'empty-response',
+        `正文是空的：输出被 max_tokens（${request.maxOutputTokens}）用完了。推理型模型（如 deepseek-reasoner）会先把预算花在思考上，请换非推理模型或调大上限`,
+        { detail: rawText.slice(0, 200) }
+      )
+    }
+    if (choice?.message?.reasoning_content) {
+      throw new LlmError('empty-response', '正文是空的：只返回了推理内容（reasoning_content），没有 content', {
+        detail: rawText.slice(0, 200)
+      })
+    }
+    throw new LlmError(
+      'empty-response',
+      '接口返回了空内容：常见原因是模型名写错、或用了 JSON 模式但提示词里没有出现 json 字样（DeepSeek 有这个要求）',
+      { detail: rawText.slice(0, 200) }
+    )
   }
 
   const usage = (payload as { usage?: { prompt_tokens?: number; completion_tokens?: number } }).usage

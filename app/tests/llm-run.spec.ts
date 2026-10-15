@@ -103,6 +103,26 @@ describe('runTask 流水线', () => {
     expect((await getModelConfig()).supportsJsonResponse).toBe(false)
   })
 
+  it('JSON 模式返回空正文时同样降级重试（DeepSeek 的空正文就是这种）', async () => {
+    await saveModelConfig({ baseUrl: 'https://example.com/v1', apiKey: 'sk-test', model: 'deepseek-chat' })
+    const { fetchImpl, calls } = stubFetch([
+      // 200 但正文为空：服务端认了请求，只是 JSON 模式没吐出内容
+      fakeResponse({ choices: [{ finish_reason: 'stop', message: { content: '' } }] }),
+      chatOk('{"value":7}')
+    ])
+    const result = await runTask(
+      task,
+      { text: 'x' },
+      { config: await getModelConfig(), deps: { fetchImpl }, sleep: noSleep, retryDelayMs: 0 }
+    )
+
+    expect(result.ok).toBe(true)
+    expect('response_format' in calls[0].body).toBe(true)
+    expect('response_format' in calls[1].body).toBe(false)
+    // 结论写进备忘录，后续请求不再白撞一次
+    expect((await getModelConfig()).supportsJsonResponse).toBe(false)
+  })
+
   it('每次调用都留一条只含估算值与状态的日志', async () => {
     const { fetchImpl } = stubFetch([chatOk('{"value":1}')])
     await runTask(task, { text: 'x' }, { config: config(), deps: { fetchImpl } })

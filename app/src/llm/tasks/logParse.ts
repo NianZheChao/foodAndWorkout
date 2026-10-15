@@ -77,7 +77,8 @@ export const logParseTask: LlmTask<LogParseInput, LogParseOutput> = {
   version: 1,
   title: '解析一句话/照片记录',
   systemPrompt:
-    '你是饮食与训练记录的解析器，把用户的一句话拆成可确认的条目。只输出 JSON，不要解释。' +
+    // 小写 `json` 是 DeepSeek JSON 模式的硬要求（缺了会返回空正文）
+    '你是饮食与训练记录的解析器，把用户的一句话拆成可确认的条目。只输出 json（JSON），不要解释。' +
     '饮食：按食材拆行，油、盐、糖、酱料必须单独成条；给出 grams（克），拿不准就填 null 并把 pending 设为 true；' +
     '熟重用 cookedState="熟"。训练：按动作拆行，给出 sets/reps/weightKg。' +
     '凡是「没量过、正常量、随便吃点」这类无法折算的，不要瞎猜，写进 clarify 逐条提问，并给 3-4 个可点选选项；' +

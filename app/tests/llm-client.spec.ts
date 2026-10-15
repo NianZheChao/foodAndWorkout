@@ -151,6 +151,46 @@ describe('chatCompletion', () => {
     ).rejects.toMatchObject({ kind: 'http' })
   })
 
+  it('空正文要说清原因：被 max_tokens 截断 / 只回了推理内容 / 其他（DeepSeek + JSON 模式踩过）', async () => {
+    const truncated = stubFetch([
+      fakeResponse({ choices: [{ finish_reason: 'length', message: { content: '' } }] })
+    ])
+    await expect(
+      chatCompletion({ ...base, maxOutputTokens: 32, timeoutMs: 1000 }, { fetchImpl: truncated.fetchImpl })
+    ).rejects.toMatchObject({
+      kind: 'empty-response',
+      message: expect.stringContaining('max_tokens')
+    })
+
+    const reasoningOnly = stubFetch([
+      fakeResponse({ choices: [{ message: { content: '', reasoning_content: '想了半天…' } }] })
+    ])
+    await expect(
+      chatCompletion({ ...base, timeoutMs: 1000 }, { fetchImpl: reasoningOnly.fetchImpl })
+    ).rejects.toMatchObject({
+      kind: 'empty-response',
+      message: expect.stringContaining('reasoning_content')
+    })
+
+    const blank = stubFetch([fakeResponse({ choices: [{ finish_reason: 'stop', message: { content: '' } }] })])
+    await expect(chatCompletion({ ...base, timeoutMs: 1000 }, { fetchImpl: blank.fetchImpl })).rejects.toMatchObject({
+      kind: 'empty-response',
+      message: expect.stringContaining('json')
+    })
+  })
+
+  it('模型名写错（400）时把服务端原话带出来，并提示官方模型名', async () => {
+    const badModel = stubFetch([
+      fakeResponse({ error: { message: 'Model Not Exist', type: 'invalid_request_error' } }, 400)
+    ])
+    await expect(
+      chatCompletion({ ...base, model: 'deepseek-flash', timeoutMs: 1000 }, { fetchImpl: badModel.fetchImpl })
+    ).rejects.toMatchObject({
+      kind: 'bad-request',
+      message: expect.stringContaining('Model Not Exist')
+    })
+  })
+
   it('同一时刻最多一个在途请求（串行）', async () => {
     let inflight = 0
     let peak = 0
