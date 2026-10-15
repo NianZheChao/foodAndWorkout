@@ -5,21 +5,21 @@
 
 - 最后更新：2026-10-15
 - 应用版本：`0.1.0`（`app/package.json`）
-- 分支 / 最近提交：`main` / `8148006 feat: 薄肌计划 PWA 阶段 0-2`
-- 质量基线（2026-10-15 实测）：`npm test` 20 文件 / 186 项（**有 1 个偶发失败的用例，7 次重跑里出现 3 次，见 §8**）；`npm run build`（含 `vue-tsc -b` 类型检查）通过
+- 分支 / 最近提交：`main` / `e84ffc8 feat: 趋势页 + 目标页 + 档案页（P0 主链路闭环）`
+- 质量基线（2026-10-15 实测）：`npm test` 24 文件 / 228 项（**有 1 个偶发失败的用例，7 次重跑里出现 3 次，见 §8**）；`npm run build`（含 `vue-tsc -b` 类型检查）通过
 
 ## 0. 三十秒速览
 
 | 阶段 | 范围 | 状态 |
 | --- | --- | --- |
 | 阶段 0 | 地基：脚手架、PWA 接入、Dexie schema + 仓储层、种子食物库 | ✅ 完成 |
-| 阶段 1 | 本地能力闭环：领域计算、三类记录页、当日汇总 | ✅ 完成（趋势页未做） |
+| 阶段 1 | 本地能力闭环：领域计算、三类记录页、当日汇总、趋势页 | ✅ 完成 |
 | 阶段 2 | 模型能力：配置与连通性、LLM 客户端、食物补全、自由文本 / 图片记录、澄清引擎 | 🟡 主体完成，4 处收尾未做（见 §3） |
 | 阶段 3 | 报告与推荐：周报月报、推荐周计划、校准向导 | ⬜ 未开始 |
 | 阶段 4 | 数据治理：导入导出、快照回滚、食物库治理、提醒、设置 | ⬜ 未开始 |
 
-一句话总结：**「配好模型 → 用一句话或表单记一整天（含未知食物自动补全）→ 看当日汇总」这条主链路已经可以真机使用；
-报告、推荐、趋势图、导入导出、目标 / 档案页还没有。**
+一句话总结：**「配好档案与目标 → 用一句话或表单记一整天（含未知食物自动补全）→ 看当日汇总与趋势」这条 P0 主链路已经完整；
+报告、推荐、导入导出还没有。**
 
 ## 1. 文档地图
 
@@ -109,13 +109,35 @@
   支持「不再追问」名单（`mutedFields`）；本地能折算的（如库里登记了「1个 = 50g」）直接填并写明假设。
   验收 `app/tests/clarify.spec.ts`。
 
+### 2.4 阶段 1 收口 + M9 / M10（2026-10-15 补）
+
+- **趋势页（T1.6 / M6 FR-600）**：`app/src/pages/TrendPage.vue` + `app/src/domain/trend.ts`。
+  `buildTrend()` 是**纯函数区间聚合**：日表（晨重 / 睡前 / 夜间净流失 / 均线 / 六项摄入 / 训练）、
+  覆盖率、体重变化率、达标率、训练明细（肌群组数 + 动作容量）、TDEE 反推输入。
+  `?days=7|14|28` 由 `normalizeTrendWindow` 收敛，非法值退回 7。
+  验收：`app/tests/trend.spec.ts` 拿 fixture 与 `python scripts/nutrition.py trend --days 14` **逐项对拍**
+  （19 项：逐日表、区间小结、训练明细、样本标注），`app/tests/trend-page.spec.ts` 覆盖窗口切换 / 覆盖率 /
+  空状态 / 缺目标值 / TDEE 样本不足五个界面分支。
+  图表用 `app/src/components/EchartView.vue`（ECharts **SVG 渲染器**，按需 import 图表与组件）。
+- **目标页（M9 / FR-900）**：`app/src/pages/TargetsPage.vue`。
+  无目标时用 `buildInitialTargets`（BMR × 活动系数 → 阶段调整）做**纯本地**首次估算并预填表单；
+  无档案时只给「去填档案」的引导，不硬算。
+  有目标时改任何字段都走「确认卡片 → `applyCalibration` + `saveTargets`」，**必留一行校准记录**（FR-903）；
+  单次 ±150 kcal 以上、距上次校准 < 2 周都会在确认卡片里显式提示（FR-904 / FR-905）；
+  「按实测 TDEE 生成建议」复用 `proposeCalibration` 自动限幅；BMI ≥ 28 时给蛋白口径提示并可一键按 1.6 g/kg 重算（FR-906）。
+  验收：`app/tests/targets-page.spec.ts`（8 项，含「取消不写库」「只改非热量字段也留痕」）。
+- **档案页（M10 / FR-1000）**：`app/src/pages/ProfilePage.vue`。
+  字段与 `profile.md` 一一对应；调味料与器材用勾选（**没勾也要存成 false**，推荐模块才知道「没有」）；
+  记录口径约定与「不再追问的字段」都是多行文本，一行一条；界面上不存在库存入口（FR-1005）。
+  验收：`app/tests/profile-page.spec.ts`。
+- **导航**：`/trend`、`/targets`、`/profile` 三个路由从 `PlaceholderPage` 换成真页面，
+  并加进了 `app/tests/pages.spec.ts` 的挂载冒烟清单。
+
 ## 3. 部分完成：有明确缺口（优先补这些）
 
 | 编号 | 已实现 | 缺什么 | 建议落点 |
 | --- | --- | --- | --- |
 | T0.2 | manifest / SW / 图标全部就绪，preview 下可安装 | 「添加到主屏幕」引导 UI；iOS 的安装说明 | `app/src/App.vue` 或 `/settings` 页加一次性提示条 |
-| T1.6 | `echarts` 已装 | 趋势页整页未做，`/trend` 目前是 `PlaceholderPage` | 新建 `app/src/pages/TrendPage.vue`，`?days=7\|14\|28`，样本不足不外推 |
-| M9 / M10 | `domain/targets.ts`、`calibration.ts`、`profile` 仓储与 `targets` 仓储均已就绪；`SummaryPage` 已提示「还没有目标值，去『目标』页做一次首次校准」 | **`/targets` 与 `/profile` 页面仍是占位** —— 用户目前无法在应用内设定目标 / 填档案，这是 P0 主链路的最后一环 | `app/src/pages/TargetsPage.vue`、`ProfilePage.vue`；必须写 `calibrations` 留痕（需求 FR-903） |
 | T2.4 | 失败已按「等网络 / 需处理」写入 `pendingOps`；未算出的条目以 `pendingFlag` 占位；今日页有队列角标 | 联网后**自动串行重放**的执行器（目前只能重新触发单次解析） | 新建 `app/src/application/queue.ts`，由 `store` 在网络恢复 / 应用启动时驱动 |
 | T2.5 | 每次调用都写 `llmLogs`；模型设置页汇总次数 / 失败数 / 输入输出估算，并可清空 | 单次任务超出预算 2 倍时的「是否继续」确认弹窗 | `app/src/llm/index.ts`（估算是现成的）+ `LogQuickPage` 的交互 |
 | T2.7 | 压缩 / 张数上限 / 隐私提示 / 用后即弃均已实现并测到；`unsupported-image` 已分类 | 模型不支持图片时的 **UI 引导文案**（提示改用文字记录，或换个支持视觉的模型） | `app/src/pages/LogQuickPage.vue` 的错误分支 |
@@ -171,6 +193,7 @@ app/
 | 汇总行与缺口提示文案 | `domain/targets.ts` `buildDaySummary` / `buildHints` |
 | 容量负荷 / MET 消耗 | `domain/training.ts` `setVolumeLoad` / `metKcal` / `aggregateWorkouts` |
 | 体重均线与变化率 | `domain/weight.ts` `movingAverage` / `weightChange` |
+| 区间聚合（趋势页 / 报告摘要） | `domain/trend.ts` `buildTrend` / `normalizeTrendWindow` |
 | TDEE 反推 | `domain/tdee.ts` `estimateTdee` / `theilSenSlope` |
 | 首次目标估算 / 校准幅度 | `domain/calibration.ts` `buildInitialTargets` / `proposeCalibration` |
 | 澄清问题生成 | `domain/clarify.ts` `buildClarifyPlan` / `parseClarifyAnswer` |
@@ -192,7 +215,7 @@ app/
 ```bash
 npm install
 npm run dev       # 本地开发服务器
-npm test          # 单元 / 对拍 / 组件测试（20 文件 / 186 项）
+npm test          # 单元 / 对拍 / 组件测试（24 文件 / 228 项）
 npm run build     # vue-tsc 类型检查 + 生产构建（产物 dist/）
 npm run preview   # 预览构建产物 —— 测 PWA 行为请用这个，不要用 dev
 npm run seed      # 从 ../data/foods.csv 重新生成内置食物库种子
@@ -226,6 +249,8 @@ npm run build
 7. **不改历史记录**：`records/` 是唯一事实来源，只增量补写；`app/tests/fixtures/` 下的记录是测试副本，可以随测试需要增删。
 8. **接口只支持 OpenAI 兼容**（`{baseUrl}/chat/completions`），不做自定义请求模板。
 9. **不做日历 / `.ics` 导出**（OQ-8 / TD-09），提醒只保留应用内提醒与本地通知能力探测。
+10. **新增页面要同步三处**：`app/src/router/index.ts` 的路由、`app/tests/pages.spec.ts` 的挂载冒烟清单、
+    本文 §5.2 的函数索引。有链式 IndexedDB 读取的页面（如目标页）要留一个 `data-ready` 标记给测试用。
 
 ## 8. 已知坑（踩过的，别再踩）
 
@@ -240,6 +265,13 @@ npm run build
   症状是「改了代码但测试行为没变」的离奇失败 —— 写测试助手时先确认参数真的透传了。
 - **测 PWA 行为要用 `npm run preview`**，`npm run dev` 里 `devOptions.enabled: false`，Service Worker 不参与。
 - 模型请求**不做任何缓存**（`workbox.runtimeCaching` 为空数组），改动缓存策略时别把模型请求框进去。
+- **ECharts 在 jsdom 里会把 stderr 刷满「getContext 未实现」**：`components/EchartView.vue` 里用
+  `canRender`（UA 里含 `jsdom` 就跳过绘图）挡掉，别在测试里去断言图表 DOM —— 断言表格与文字。
+  另外渲染器固定 `SVG`（不依赖 canvas），ECharts 6 的 `grid.containLabel` 需要额外特性包，
+  所以直接用固定留白（`GRID` 常量）。
+- **页面里有「读库 → 再读库」的链式 await 时，`flushPromises()` 挡不住 fake-indexeddb 的宏任务**：
+  要么用 `vi.waitFor` 包住断言，要么给页面加 `data-ready` 标记再等它变 true（目标页 / 档案页用的是后者）。
+  只在库里断言、不等界面刷新，会出现「库里有值但按钮还没渲染」的假失败。
 - **`tests/quick-log-page.spec.ts` 是偶发失败的**（2026-10-15 观察：7 次重跑里 3 次失败，且每次失败的用例不一定是同一个）。
   症状是断言 UI 文案时读到的还是旧内容：用例先用 `vi.waitFor` 等草稿落库，再用**一次** `flushPromises()` 就去读渲染结果，
   在 20 个 worker 并行抢资源时这次等待不够。修法很直接——把断言本身也包进 `vi.waitFor`。
@@ -247,11 +279,11 @@ npm run build
 
 ## 9. 建议的推进顺序
 
-1. **T1.6 趋势页 + M9 目标页 + M10 档案页** —— 把 P0 主链路补完整（用户现在看到「去『目标』页做校准」却进不去）。
-   目标页顺带把 `calibrations` 留痕链路打通，后面 T3.5 校准向导直接复用。
+1. ~~T1.6 趋势页 + M9 目标页 + M10 档案页~~ —— 2026-10-15 已完成（见 §2.4），P0 主链路已闭环。
 2. **T2.4 队列执行器 + T2.7 图片降级引导 + T0.2 安装引导** —— 都是小改动，但直接影响日常可用性。
 3. **T3.1 → T3.2 → T3.3** —— 先有本地摘要，再有周报月报，最后做历史版本；这条顺序能把「数字守卫」一次做对。
-4. **T3.4 / T3.5** —— 推荐与校准，依赖前面的摘要与校准留痕。
+   `domain/trend.ts` 的区间聚合已经是 `reportDigest` 的现成底座（报告摘要 = 同一次聚合换个周期标签）。
+4. **T3.4 / T3.5** —— 推荐与校准，依赖前面的摘要与校准留痕；校准页与 `calibrations` 链路已经打通，向导只需接模型建议。
 5. **T4.1 → T4.2 → T4.3** —— 导入导出与快照是「数据在本地」的安全网，建议在报告功能成型后尽快补上。
 6. **T4.4 - T4.6** 收尾打磨。
 
@@ -259,9 +291,12 @@ npm run build
 
 ## 10. 交接自检清单
 
-- [ ] `cd app && npm install && npm test`（20 文件 / 186 项；单个用例偶发失败时重跑一次即可，见 §8）
+- [ ] `cd app && npm install && npm test`（24 文件 / 228 项；单个用例偶发失败时重跑一次即可，见 §8）
 - [ ] `npm run build` 通过
 - [ ] `npm run preview` 能打开今日页，底部 tab 来回切换不卡死
+- [ ] `/trend` 切 7 / 14 / 28 天，URL 里的 `?days=` 跟着变；空区间显示「未记录」而不是 0
+- [ ] `/profile` 填一份档案 → `/targets` 用首次估算写入目标，并在「校准记录」里看到一行
+- [ ] 在 `/targets` 把热量改掉 200 kcal：确认卡片要出现「超过 ±150 kcal」与「样本可能不足」提示
 - [ ] 在 `/settings/model` 填入自己的 OpenAI 兼容接口，连通性测试通过
 - [ ] `/log/quick` 用一句话记一餐（无模型时会走占位 + 排队，不报错）
 - [ ] 读完本文 §7「变更纪律」，再开始动手

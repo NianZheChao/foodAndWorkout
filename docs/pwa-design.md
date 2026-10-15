@@ -230,6 +230,7 @@ this.version(2).stores({ drafts: 'id, date, status' })   // 其余表沿用 v1
 | `domain/portion.ts` | 份量 → 克的折算（g/ml/个/只/碗/勺/盒），返回依据字符串 | `lookup --g` |
 | `domain/nutrition.ts` | 单条记录的营养计算、当日求和 | `totals` |
 | `domain/targets.ts` | 目标对比、差额、占比、缺口提示文案 | `totals` |
+| `domain/trend.ts` | 区间聚合（日表、体重变化率、达标率、训练明细、TDEE 输入） | `trend` |
 | `domain/training.ts` | 组次重量解析、容量负荷、MET 消耗、肌群组数 | `trend` 训练部分 |
 | `domain/weight.ts` | 晨重序列、7 日均线、夜间净流失、变化率 | `trend` 体重部分 |
 | `domain/adherence.ts` | 达标率（热量 ±10%、蛋白 ≥ 目标×90%） | `trend` |
@@ -988,7 +989,7 @@ scripts/
 | T1.3 | `domain/weight\|adherence\|tdee\|calibration` | ✅ 2026-10-15：逐日体重 / 均线 / 净流失 / 变化率 / 达标率 / TDEE / `init` 全部对拍 |
 | T1.4 | 记饮食 / 记训练 / 记身体三个页面 + 校验 | ✅ 2026-10-15：三个面板 + `store/day.ts`，端到端用例见 `day-store.spec.ts`（真机 60 秒记一餐待人工验收）；页面结构在同日改为 `/log/:kind?` 容器 + 顶部子 tab，见 T1.7 |
 | T1.5 | 当日汇总页（含占比、缺口提示、不完整标记） | ✅ 2026-10-15：`SummaryPage.vue`，文案与阈值复用 domain，与脚本输出同源 |
-| T1.6 | 趋势页（ECharts） | 7/14/28 切换，样本不足不外推 |
+| T1.6 | 趋势页（ECharts） | ✅ 2026-10-15：`TrendPage.vue` + `domain/trend.ts`（区间聚合与脚本 `trend` 逐项对拍，`tests/trend.spec.ts`）；7/14/28 切换写进 `?days=`，区间不足 7 天不外推周均，只有睡前重的日期单列标注 |
 | T1.7 | 底部 tab 与「记录」hub 的导航修正 | ✅ 2026-10-15：`/log/:kind?` 归入「记录」、高亮按前缀分组、跳转改走 `@click`（不再依赖 `change`）；回归用例见 `tests/pages.spec.ts`，含「点已高亮的 tab 仍能跳转」 |
 
 ### 阶段 2：模型能力（P0 收口）
