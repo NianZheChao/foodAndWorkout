@@ -5,8 +5,8 @@
 
 - 最后更新：2026-10-15
 - 应用版本：`0.1.0`（`app/package.json`）
-- 分支 / 最近提交：`main` / `7b3e659 ui: 设计基元 + 导航可达性 + 标签选择（AppHeader/ChipSelect/Vant 主题）`
-- 质量基线（2026-10-15 实测）：`npm test` 27 文件 / 250 项（**有 1 个偶发失败的用例，7 次重跑里出现 3 次，见 §8**）；`npm run build`（含 `vue-tsc -b` 类型检查）通过
+- 分支 / 最近提交：`main` / `5797bc2 feat: 报告摘要 + 周报月报 + 数字守卫 + 报告页（T3.1-T3.3）`
+- 质量基线（2026-10-15 实测）：`npm test` 31 文件 / 287 项（**有 1 个偶发失败的用例，7 次重跑里出现 3 次，见 §8**）；`npm run build`（含 `vue-tsc -b` 类型检查）通过
 
 ## 0. 三十秒速览
 
@@ -15,11 +15,11 @@
 | 阶段 0 | 地基：脚手架、PWA 接入（含安装引导）、Dexie schema + 仓储层、种子食物库 | ✅ 完成 |
 | 阶段 1 | 本地能力闭环：领域计算、三类记录页、当日汇总、趋势页 | ✅ 完成 |
 | 阶段 2 | 模型能力：配置与连通性、LLM 客户端、食物补全、自由文本 / 图片记录、澄清引擎、队列执行器 | 🟡 主体完成，2 处收尾未做（见 §3） |
-| 阶段 3 | 报告与推荐：周报月报、推荐周计划、校准向导 | ⬜ 未开始 |
+| 阶段 3 | 报告与推荐：周报月报、推荐周计划、校准向导 | 🟡 报告已完成（T3.1 - T3.3），推荐与校准向导未做（见 §3） |
 | 阶段 4 | 数据治理：导入导出、快照回滚、食物库治理、提醒、设置 | ⬜ 未开始 |
 
-一句话总结：**「配好档案与目标 → 用一句话或表单记一整天（含未知食物自动补全）→ 看当日汇总与趋势」这条 P0 主链路已经完整；
-报告、推荐、导入导出还没有。**
+一句话总结：**「配好档案与目标 → 用一句话或表单记一整天（含未知食物自动补全）→ 看当日汇总与趋势 → 生成周报 / 月报」
+这条链路已经完整；推荐周计划、校准向导、导入导出还没有。**
 
 ## 1. 文档地图
 
@@ -175,6 +175,30 @@
 - 验收：`app/tests/chip-select.spec.ts`（新增）、`app/tests/pages.spec.ts` 新增「导航可达性」两项
   （今日页六个入口可达、五个二级页都有返回按钮且能回来源页），`app/tests/profile-page.spec.ts` 跟着改成标签选择。
 
+### 2.7 阶段 3 报告（T3.1 - T3.3，2026-10-15 补）
+
+- **T3.1 `domain/reportDigest.ts`**：报告摘要。**直接建在 `domain/trend.ts` 的区间聚合上** ——
+  趋势页看得见的数、报告摘要里的数、数字守卫的白名单是同一套（`tests/report-digest.spec.ts` 逐项比对两边）。
+  摘要里**没有一条原始记录**：只有周期、覆盖率、均值、达标天数、体重序列、训练聚合、当前目标、TDEE
+  （测试里断言序列化后的文本不含任何食物名与餐次）。周期：周报按周一到周日（`isoWeekLabel` 给 `2026-W41` 这种标签），
+  月报按自然月；区间会被「到今天为止」截短，未来的日子不算。
+  **两处补充了设计文档没写死的口径**：覆盖率的分母是**区间天数**（不是传进来的行数）；
+  TDEE 样本不到 7 天就不写进摘要（`MIN_TDEE_POINTS`），免得模型拿 3 天反推出来的 4330 kcal 当事实。
+- **T3.2 任务 + 数字守卫**：`llm/tasks/report.ts`（`report.weekly` / `report.monthly` 共用一套输入输出契约，
+  `findings[].kind` 由 Zod 枚举强制，缺失就走重试 → 两次不合规不落库）；
+  `domain/reportGuard.ts` 三道闸门：**数字守卫**（正文数字必须在摘要里出现过，或 `0-100%` 的百分比形式，
+  或天 / 周 / 组这类常量）、**校准幅度门禁**（超出 ±150 kcal 降级成待确认）、**覆盖率门禁**（< 50% 不给校准建议）。
+  守卫只标记不改写：待核对的数字照样显示，只是高亮出来。
+- **T3.3 报告页**：`app/src/pages/ReportsPage.vue`（`/reports`）+
+  `app/src/pages/ReportDetailPage.vue`（`/reports/:id`）。
+  列表页给「本周 / 本月」两个生成入口与历史版本（标签写明「待生成文字 / 文字已生成 / 已人工编辑」，
+  并标出待核对数字个数）；详情页按 **数值区（本地计算，不可编辑）/ 文字区（模型写，可编辑）** 分区，
+  待核对数字就地高亮。**没配模型也能先生成数值区**（`status: pending`），界面会说清「数值已存、文字待生成」。
+  「重新生成」永远新建一条记录，旧版本留在列表（FR-710）；人工编辑写 `editedByUser` 留痕。
+- 用例：`app/tests/report-digest.spec.ts`（12 项）、`report-guard.spec.ts`（10 项）、
+  `report-generate.spec.ts`（8 项，含「模型失败也留数值区」「重生成不动旧版本」）、
+  `report-pages.spec.ts`（7 项，覆盖未配模型、样本不足、编辑留痕、重生成）。
+
 ## 3. 部分完成：有明确缺口（优先补这些）
 
 | 编号 | 已实现 | 缺什么 | 建议落点 |
@@ -188,11 +212,10 @@
 
 | 任务 | 要做的事 | 依赖 / 注意 | 验收 |
 | --- | --- | --- | --- |
-| T3.1 | `reportDigest`：本地摘要（周期、均值、达标率、体重趋势、训练容量、缺口） | 纯本地计算，放 `domain/`；**摘要里不含原始记录逐条文本**（省 token） | 字段与 `docs/pwa-design.md` §6.4 契约一致 |
-| T3.2 | `report.weekly` / `report.monthly` + **数字一致性守卫** + 数值 / 文字分区渲染 | 新任务注册进 `llm/index.ts` 的 `TASKS`；守卫规则：模型输出的数字必须在本地摘要里出现过 | 混入臆造数字时被标记出来 |
-| T3.3 | 报告列表、历史版本、重新生成、人工编辑留痕 | `reports` 表已有 `id, type, periodStart, status` 索引；路由 `/reports`、`/reports/:id` 需从 `PlaceholderPage` 换成真页面 | 重生成不删除旧版本 |
 | T3.4 | `plan.training` / `plan.meal` + 本地复算 | 模型自报营养与本地计算结果冲突时**以本地为准** | 页面 `/plan`；不假定用户手头有什么食材（见 `AGENTS.md`） |
 | T3.5 | `calibration.review` + 校准向导（幅度与频率门禁） | `domain/calibration.ts` 的 `MAX_CALIBRATION_KCAL = 150` 已是现成门禁；写 `targets` 必须同时写 `calibrations` 留痕 | 超出 ±150 kcal 被拦下 |
+
+> T3.1 - T3.3（报告摘要 / 周报月报 + 数字守卫 / 报告页）已于 2026-10-15 完成，见 §2.7。
 
 ### 4.2 阶段 4：数据治理与打磨（P1-P2）
 
@@ -216,7 +239,7 @@ app/
     domain/       纯计算与领域类型 —— 无 IO、不依赖 Vue / Dexie（对拍测试直接打这里）
     data/         Dexie schema（db.ts）、仓储层（repositories/）、种子数据（seed/）
     llm/          OpenAI 兼容客户端、错误分类、文本抽取、任务注册表与流水线、tasks/
-    application/  用例层：本地优先、业务校验、落库编排（foodLibrary / foodResolve / logParse）
+    application/  用例层：本地优先、业务校验、落库编排（foodLibrary / foodResolve / logParse / queue / report）
     io/markdown/  记录文件（Markdown）解析 —— 导入与对拍共用
     pages/        页面；components/ 共享组件；router/ 路由；store/ Pinia 会话态
   tests/          单元 / 对拍 / 组件测试（fixtures/ 与 helpers/ 同级）
@@ -244,6 +267,9 @@ app/
 | 未知食物落库 | `application/foodResolve.ts` `resolveFoods` / `toFood` |
 | 自由文本 → 草稿 | `application/logParse.ts` `parseLog` |
 | 待办队列重放 | `application/queue.ts` `runQueue`（启动 / 联网时驱动） |
+| 报告摘要（模型输入） | `domain/reportDigest.ts` `buildReportDigest` / `periodOf` / `coverageWarning` |
+| 报告数字守卫与门禁 | `domain/reportGuard.ts` `flagUnknownNumbers` / `applyCalibrationGate` / `applyCoverageGate` |
+| 报告生成与落库 | `application/report.ts` `buildDigest` / `generateReport` / `saveEditedContent` |
 | 记录文件解析 | `io/markdown/record.ts` |
 | 路由表 | `app/src/router/index.ts`（权威表格在 `docs/pwa-design.md` §8.1） |
 | 底部 tab 匹配规则 | `app/src/App.vue` 的 `tabs[].match` |
@@ -255,7 +281,7 @@ app/
 ```bash
 npm install
 npm run dev       # 本地开发服务器
-npm test          # 单元 / 对拍 / 组件测试（27 文件 / 250 项）
+npm test          # 单元 / 对拍 / 组件测试（31 文件 / 287 项）
 npm run build     # vue-tsc 类型检查 + 生产构建（产物 dist/）
 npm run preview   # 预览构建产物 —— 测 PWA 行为请用这个，不要用 dev
 npm run seed      # 从 ../data/foods.csv 重新生成内置食物库种子
@@ -297,6 +323,11 @@ npm run build
     等用户确认（FR-407）。不要为了「自动」而把需要拍板的数值偷偷写进记录。
 13. **新页面用 `components/AppHeader.vue` 开头**（标题 + 副标题 + `back`）：底部 tab 只有五个入口，
     二级页面必须自带退路。样式一律用 `style.css` 的全局类，页面 `<style scoped>` 只写这一页特有的东西。
+14. **报告的数值区永远本地算、永远不可编辑**：模型只写文字。要改数字就去改记录或走校准流程；
+    界面上不给「编辑数值」的入口，避免报告和记录各说各话。
+15. **写库前把响应式对象拍平**：界面传进 `application/` 的对象可能是 Vue 的响应式代理，
+    直接 `put` 会 `DataCloneError`（fake-indexeddb 与真机都会炸）。落库前深拷一份纯 JSON
+    （`saveEditedContent` 就是这么做的）。
 
 ## 8. 已知坑（踩过的，别再踩）
 
@@ -336,8 +367,10 @@ npm run build
 1. ~~T1.6 趋势页 + M9 目标页 + M10 档案页~~ —— 2026-10-15 已完成（见 §2.4），P0 主链路已闭环。
 2. ~~T2.4 队列执行器 + T2.7 图片降级引导 + T0.2 安装引导~~ —— 2026-10-15 已完成（见 §2.5）。
 3. **T3.1 → T3.2 → T3.3** —— 先有本地摘要，再有周报月报，最后做历史版本；这条顺序能把「数字守卫」一次做对。
-   `domain/trend.ts` 的区间聚合已经是 `reportDigest` 的现成底座（报告摘要 = 同一次聚合换个周期标签）。
-4. **T3.4 / T3.5** —— 推荐与校准，依赖前面的摘要与校准留痕；校准页与 `calibrations` 链路已经打通，向导只需接模型建议。
+   ~~2026-10-15 已完成（见 §2.7）~~；`domain/reportDigest.ts` 就是建在 `domain/trend.ts` 上的，
+   T3.4 / T3.5 的模型输入可以直接复用 `buildDigest`。
+4. **T3.4 / T3.5** —— 推荐与校准，依赖前面的摘要与校准留痕；校准页与 `calibrations` 链路已经打通，
+   报告页也已经能给出（并拦住）校准建议，向导只需把「采纳建议」接到 `applyCalibration`。
 5. **T4.1 → T4.2 → T4.3** —— 导入导出与快照是「数据在本地」的安全网，建议在报告功能成型后尽快补上。
 6. **T4.4 - T4.6** 收尾打磨。
 
@@ -350,6 +383,8 @@ npm run build
 - [ ] `npm run preview` 能打开今日页，底部 tab 来回切换不卡死
 - [ ] 今日页顶部有一次性的「装到主屏幕」提示，点「知道了」后刷新不再出现
 - [ ] 断网记一餐（会出现「待补全」）→ 配好模型 → 回今日页点「立即重试」，条目补齐且角标消失
+- [ ] 报告页点「本周」：没配模型时会先生说「数值区已经算好并保存」，配好模型后能进详情页看到数值区 + 文字区
+- [ ] 报告详情里模型编出来的数字被高亮成「待核对」；点「重新生成」后列表里有两版
 - [ ] `/trend` 切 7 / 14 / 28 天，URL 里的 `?days=` 跟着变；空区间显示「未记录」而不是 0
 - [ ] `/profile` 填一份档案 → `/targets` 用首次估算写入目标，并在「校准记录」里看到一行
 - [ ] 在 `/targets` 把热量改掉 200 kcal：确认卡片要出现「超过 ±150 kcal」与「样本可能不足」提示

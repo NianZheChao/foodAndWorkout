@@ -434,6 +434,14 @@ interface LlmTask<In, Out> {
 | 事实/推断 | `findings[].kind` 必须存在，缺失则整份报告判为不合规，走重试（FR-706） |
 | 落库 | 数值部分存本地聚合结果，文字部分存模型输出，并记录 `model`, `taskVersion`, `createdAt`, `editedByUser=false`（FR-710） |
 
+**实现补充（2026-10-15）**：三处把上面的规则落成口径，交接时不要改回去。
+
+| 点 | 口径 | 为什么 |
+| --- | --- | --- |
+| 覆盖率分母 | `coverage.ratio = 有饮食记录的天数 / 区间天数` | 分母必须是区间本身：调用方若只传有记录的天，覆盖率会被算成 100% |
+| TDEE 进摘要的条件 | `tdee` 只在样本 ≥ 7 天（`MIN_TDEE_POINTS`）时写入 | 3 天数据也能反推出一个「数」，写进摘要就等于给了模型一个可以引用的假事实 |
+| 百分比放行 | 数字守卫放行 `0-100` 的整数**仅当它带 `%`** | 若放行「任意小整数」，`78 kg` 这类编造体重会被漏掉 |
+
 ### 6.5 契约三：`plan.training`
 
 **输入**：今日缺口、近 14 天各肌群组数与最近训练时间、目标组数下限、可用器材、伤病约束、上次同动作的 `组x次x重量`。
@@ -1022,9 +1030,9 @@ scripts/
 
 | 任务 | 内容 | 验收 |
 | --- | --- | --- |
-| T3.1 | `reportDigest`（本地摘要） | 摘要不含原始记录，字段与契约一致 |
-| T3.2 | `report.weekly` / `report.monthly` + 数字守卫 + 数值/文字分区渲染 | 混入臆造数字时被标记 |
-| T3.3 | 报告列表、历史版本、重新生成、人工编辑留痕 | 重生成不删除旧版本 |
+| T3.1 | `reportDigest`（本地摘要） | ✅ 2026-10-15：`domain/reportDigest.ts`，建在 `domain/trend.ts` 的区间聚合上；摘要不含原始记录（`tests/report-digest.spec.ts` 断言序列化后无食物名），与趋势逐项同源 |
+| T3.2 | `report.weekly` / `report.monthly` + 数字守卫 + 数值/文字分区渲染 | ✅ 2026-10-15：`llm/tasks/report.ts` + `domain/reportGuard.ts`；守卫只放行「摘要里的数 / 0-100% 百分比 / 天周组常量」，其余标「待核对」；`report-generate.spec.ts` 覆盖 |
+| T3.3 | 报告列表、历史版本、重新生成、人工编辑留痕 | ✅ 2026-10-15：`ReportsPage.vue` + `ReportDetailPage.vue`；重新生成新建记录、旧版本保留；人工编辑写 `editedByUser`，数值区不可编辑 |
 | T3.4 | `plan.training` / `plan.meal` + 本地复算 | 模型自报营养与本地不一致时以本地为准 |
 | T3.5 | `calibration.review` + 校准向导（幅度与频率门禁） | 超出 ±150 kcal 被拦下 |
 
