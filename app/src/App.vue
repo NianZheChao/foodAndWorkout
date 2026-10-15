@@ -36,11 +36,11 @@ onMounted(() => {
  *    点一个已经高亮的 tab 就成了死键，用户会直接卡在没有返回入口的页面上。
  */
 const tabs = [
-  { name: 'today', label: '今日', to: '/today', match: ['/today', '/summary'] },
-  { name: 'log', label: '记录', to: '/log', match: ['/log'] },
-  { name: 'trend', label: '趋势', to: '/trend', match: ['/trend'] },
-  { name: 'reports', label: '报告', to: '/reports', match: ['/reports'] },
-  { name: 'settings', label: '设置', to: '/settings', match: ['/settings'] }
+  { name: 'today', label: '今日', icon: 'wap-home-o', to: '/today', match: ['/today', '/summary'] },
+  { name: 'log', label: '记录', icon: 'records-o', to: '/log', match: ['/log'] },
+  { name: 'trend', label: '趋势', icon: 'chart-trending-o', to: '/trend', match: ['/trend'] },
+  { name: 'reports', label: '报告', icon: 'notes-o', to: '/reports', match: ['/reports'] },
+  { name: 'settings', label: '设置', icon: 'setting-o', to: '/settings', match: ['/settings'] }
 ]
 
 const activeIndex = computed(() => {
@@ -60,7 +60,7 @@ function go(to: string): void {
       <router-view />
     </main>
     <van-tabbar :model-value="activeIndex">
-      <van-tabbar-item v-for="item in tabs" :key="item.name" @click="go(item.to)">
+      <van-tabbar-item v-for="item in tabs" :key="item.name" :icon="item.icon" @click="go(item.to)">
         {{ item.label }}
       </van-tabbar-item>
     </van-tabbar>
@@ -76,6 +76,8 @@ function go(to: string): void {
 
 .app-main {
   flex: 1;
+  /* 独立窗口（装到主屏）时避开刘海与底部横条 */
+  padding-top: env(safe-area-inset-top);
   padding-bottom: calc(50px + env(safe-area-inset-bottom));
 }
 </style>

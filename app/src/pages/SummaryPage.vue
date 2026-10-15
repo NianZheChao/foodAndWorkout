@@ -8,6 +8,7 @@
 
 import { onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import AppHeader from '@/components/AppHeader.vue'
 import DateNav from '@/components/DateNav.vue'
 import { useDayStore } from '@/store/day'
 import { fmtNumber, fmtPercent, fmtSigned } from '@/domain/format'
@@ -34,8 +35,11 @@ function isOver(row: { key: string; ratio: number }): boolean {
 
 <template>
   <section class="page">
-    <h1 class="page-title">当日汇总</h1>
-    <p class="page-subtitle">数值全部来自本地计算，模型只负责写结论。</p>
+    <AppHeader
+      title="当日汇总"
+      subtitle="数值全部来自本地计算，模型只负责写结论。"
+      back
+    />
 
     <DateNav :date="store.date" @update:date="store.load" />
 
@@ -61,8 +65,12 @@ function isOver(row: { key: string; ratio: number }): boolean {
             </span>
           </span>
         </div>
-        <div class="bar">
-          <div class="bar-fill" :class="{ 'bar-over': isOver(row) }" :style="{ width: `${fillPercent(row.ratio)}%` }" />
+        <div class="progress">
+          <div
+            class="progress-fill"
+            :class="{ over: isOver(row) }"
+            :style="{ width: `${fillPercent(row.ratio)}%` }"
+          />
         </div>
         <div v-if="row.target" class="nutrient-diff">
           差额 {{ fmtSigned(row.diff) }}
@@ -71,6 +79,9 @@ function isOver(row: { key: string; ratio: number }): boolean {
       <p v-if="!store.hasTargets" class="muted">
         还没有目标值：在「目标」页完成首次校准后，这里会显示差额与占比。
       </p>
+      <van-button v-if="!store.hasTargets" size="small" plain type="primary" block @click="router.push('/targets')">
+        去设定目标
+      </van-button>
     </div>
 
     <div class="card">
@@ -142,11 +153,6 @@ function isOver(row: { key: string; ratio: number }): boolean {
 </template>
 
 <style scoped>
-.card-warn {
-  border-color: var(--warn);
-  background: #fffaf3;
-}
-
 .nutrient-row {
   padding: 8px 0;
   border-bottom: 1px dashed var(--border);
@@ -171,45 +177,13 @@ function isOver(row: { key: string; ratio: number }): boolean {
   color: var(--brand);
 }
 
-.nutrient-ratio.over,
-.bar-over {
+.nutrient-ratio.over {
   color: var(--danger);
-}
-
-.bar {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--brand-soft);
-  margin-top: 6px;
-  overflow: hidden;
-}
-
-.bar-fill {
-  height: 100%;
-  background: var(--brand);
-}
-
-.bar-fill.bar-over {
-  background: var(--danger);
 }
 
 .nutrient-diff {
   color: var(--text-muted);
   font-size: 12px;
   margin-top: 4px;
-}
-
-.hint-list {
-  margin: 0;
-  padding-left: 18px;
-  color: var(--text);
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
 </style>

@@ -8,7 +8,7 @@
  *    只靠 `change` 会让用户卡在「回不到首页」的死键上。
  */
 
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter, type Router } from 'vue-router'
@@ -121,14 +121,8 @@ describe('底部 tab 导航回归（「无法返回首页」）', () => {
 describe('今日页方格按钮 → 记录 hub', () => {
   it('「记饮食 / 记训练 / 记身体」分别落在对应子 tab', async () => {
     const { wrapper, router } = await mountApp('/today')
-    const buttons = () => wrapper.findAll('.quick-grid .van-button')
-    expect(buttons().map((button) => button.text())).toEqual([
-      '记饮食',
-      '记训练',
-      '记身体',
-      '一句话记录',
-      '当日汇总'
-    ])
+    const buttons = () => wrapper.findAll('.entry-grid .van-button')
+    expect(buttons().map((button) => button.text())).toEqual(['记饮食', '记训练', '记身体', '一句话记录'])
 
     await buttons()[0].trigger('click')
     await flushPromises()
@@ -153,5 +147,53 @@ describe('今日页方格按钮 → 记录 hub', () => {
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/log/workout')
     expect(wrapper.find('.page-title').text()).toBe('记录')
+  })
+})
+
+describe('导航可达性（二级页面不能是孤岛）', () => {
+  it('今日页「更多」能进目标 / 档案 / 数据 / 食物库 / 趋势 / 当日汇总', async () => {
+    const { wrapper, router } = await mountApp('/today')
+    const more = () =>
+      wrapper
+        .findAll('.link-grid .van-button')
+        .filter((item) => ['当日汇总', '趋势', '目标与校准', '档案', '食物库', '数据'].includes(item.text()))
+    expect(more().map((item) => item.text())).toEqual([
+      '当日汇总',
+      '趋势',
+      '目标与校准',
+      '档案',
+      '食物库',
+      '数据'
+    ])
+
+    const expected: [string, string][] = [
+      ['目标与校准', '/targets'],
+      ['档案', '/profile'],
+      ['数据', '/data']
+    ]
+    for (const [label, path] of expected) {
+      await router.push('/today')
+      await flushPromises()
+      const target = more().find((item) => item.text() === label)
+      if (!target) throw new Error(`找不到「${label}」入口`)
+      await target.trigger('click')
+      await vi.waitFor(() => {
+        expect(router.currentRoute.value.path, label).toBe(path)
+      })
+    }
+  })
+
+  it('二级页面都带返回按钮，点了回到来源页', async () => {
+    for (const path of ['/targets', '/profile', '/settings/model', '/log/quick', '/data']) {
+      const { wrapper, router } = await mountApp('/today')
+      await router.push(path)
+      await flushPromises()
+      const back = wrapper.find('.back-btn')
+      expect(back.exists(), `${path} 缺少返回按钮`).toBe(true)
+
+      await back.trigger('click')
+      await flushPromises()
+      expect(router.currentRoute.value.path, `${path} 返回后`).toBe('/today')
+    }
   })
 })

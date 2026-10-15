@@ -134,10 +134,12 @@ async function saveManual(): Promise<void> {
 </script>
 
 <template>
-  <section class="page">
-    <van-tabs v-model:active="meal" shrink>
-      <van-tab v-for="name in MEALS" :key="name" :name="name" :title="name" />
-    </van-tabs>
+  <div class="panel">
+    <div class="segbar">
+      <van-tabs v-model:active="meal" shrink>
+        <van-tab v-for="name in MEALS" :key="name" :name="name" :title="name" />
+      </van-tabs>
+    </div>
 
     <div class="card">
       <van-field v-model="dish" label="菜品/做法" placeholder="例如：西红柿鸡蛋拌面（可留空）" />
@@ -148,16 +150,28 @@ async function saveManual(): Promise<void> {
           :key="food.id"
           class="food-item"
           :class="{ 'food-item-active': selected?.id === food.id }"
+          role="button"
+          :aria-pressed="selected?.id === food.id"
           @click="pick(food)"
         >
-          <div class="food-item-name">{{ food.name }}</div>
-          <div class="food-item-meta">
-            {{ fmtNumber(food.kcal) }} kcal / {{ food.unit }}
-            <span v-if="food.basisGrams">（约 {{ fmtNumber(food.basisGrams) }} g）</span>
+          <div class="food-item-main">
+            <div class="food-item-name">
+              {{ food.name }}
+              <span v-if="selected?.id === food.id" class="food-item-check" aria-hidden="true">✓</span>
+            </div>
+            <div class="food-item-meta">
+              每 {{ food.unit }}
+              <span v-if="food.basisGrams">· 约 {{ fmtNumber(food.basisGrams) }} g</span>
+              · 蛋白 {{ fmtNumber(food.proteinG) }} g
+            </div>
+          </div>
+          <div class="food-item-kcal">
+            {{ fmtNumber(food.kcal) }}
+            <small>kcal</small>
           </div>
         </div>
       </div>
-      <van-empty v-else description="没有匹配的食物" image-size="60" />
+      <p v-else class="empty">没有匹配的食物：换个说法搜，或者手工录入一条。</p>
       <van-button size="small" plain block style="margin-top: 10px" @click="manualVisible = true">
         找不到？手工录入一条
       </van-button>
@@ -227,32 +241,105 @@ async function saveManual(): Promise<void> {
         保存并选用
       </van-button>
     </van-popup>
-  </section>
+</div>
 </template>
 
 <style scoped>
+.segbar {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 4px 10px;
+}
+
 .food-list {
   max-height: 260px;
   overflow-y: auto;
+  margin-top: 4px;
 }
 
 .food-item {
-  padding: 8px 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 6px;
   border-bottom: 1px dashed var(--border);
   cursor: pointer;
 }
 
+.food-item:last-child {
+  border-bottom: none;
+}
+
 .food-item-active {
   background: var(--brand-soft);
+  border-radius: var(--radius-sm);
+  box-shadow: inset 3px 0 0 var(--brand);
 }
 
 .food-item-name {
   font-size: 14px;
 }
 
+.food-item-check {
+  margin-left: 6px;
+  color: var(--brand);
+}
+
 .food-item-meta {
   color: var(--text-muted);
   font-size: 12px;
+  margin-top: 2px;
+}
+
+.food-item-kcal {
+  flex-shrink: 0;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.food-item-kcal small {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.meal-label {
+  margin: 12px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand);
+}
+
+.meal-label:first-child {
+  margin-top: 0;
+}
+
+.entry-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+.entry-row:last-child {
+  border-bottom: none;
+}
+
+.entry-name {
+  font-size: 14px;
+}
+
+.entry-meta {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-top: 2px;
 }
 
 .portion-feedback {
@@ -286,29 +373,6 @@ async function saveManual(): Promise<void> {
 .facts-value {
   font-size: 14px;
   font-variant-numeric: tabular-nums;
-}
-
-.meal-label {
-  margin: 12px 0 4px;
-  font-size: 13px;
-  color: var(--brand);
-}
-
-.entry-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 8px 0;
-  border-bottom: 1px dashed var(--border);
-}
-
-.entry-name {
-  font-size: 14px;
-}
-
-.entry-meta {
-  color: var(--text-muted);
-  font-size: 12px;
 }
 
 .entry-right {

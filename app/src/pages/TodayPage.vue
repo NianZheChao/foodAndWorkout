@@ -1,12 +1,18 @@
 <script setup lang="ts">
-/** 今日（M0）：一眼看完今天的状态，并进入记录流程。 */
+/**
+ * 今日（M0 / M5）：一眼看完今天的状态，并进入记录流程。
+ *
+ * 三块内容：进度（热量 / 蛋白 / 体重 / 训练）、记录入口、待办与提示。
+ * 数字全部来自 `store` 的本地汇总；这里只负责排版，不做任何计算。
+ */
 
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast } from 'vant'
+import AppHeader from '@/components/AppHeader.vue'
 import { useDayStore } from '@/store/day'
 import { runQueue } from '@/application/queue'
-import { fmtNumber } from '@/domain/format'
+import { fmtNumber, fmtPercent } from '@/domain/format'
 import { formatDateCn, todayIso } from '@/app/date'
 import { db, SCHEMA_VERSION } from '@/data/db'
 import { countFoods } from '@/data/repositories/foods'
@@ -28,9 +34,6 @@ onMounted(async () => {
   seedVersion.value = (await getMeta<string>(META_KEYS.seedVersion)) ?? '-'
 })
 
-const kcalRow = computed(() => store.summaryRows.find((row) => row.key === 'kcal'))
-const proteinRow = computed(() => store.summaryRows.find((row) => row.key === 'proteinG'))
-
 const weightText = computed(() =>
   store.day?.weightAmKg === undefined ? '未称' : `${fmtNumber(store.day.weightAmKg)} kg`
 )
@@ -39,6 +42,20 @@ const trainingText = computed(() => {
   if (store.summary.training.isRestDay) return '休息日'
   return `${fmtNumber(store.summary.training.minutes)} 分钟 · ${store.summary.training.sets} 组`
 })
+
+/** 进度条填充比例：上限类按 100% 截断，避免超出时条子溢出。 */
+function fillPercent(ratio: number): number {
+  return Math.max(0, Math.min(100, ratio * 100))
+}
+
+function isOver(row: { key: string; ratio: number }): boolean {
+  return row.key === 'sodiumMg' ? row.ratio > 1 : row.ratio > 1.1
+}
+
+/** 今日进度里只放最常看的三项：热量、蛋白、钠。 */
+const progressRows = computed(() =>
+  store.summaryRows.filter((row) => ['kcal', 'proteinG', 'sodiumMg'].includes(row.key))
+)
 
 /** 手动重试待补全队列：平时它在启动 / 联网时自动跑，这里是兜底入口（§6.10）。 */
 async function retryQueue(): Promise<void> {
@@ -59,27 +76,44 @@ async function retryQueue(): Promise<void> {
 
 <template>
   <section class="page">
-    <h1 class="page-title">薄肌计划</h1>
-    <p class="page-subtitle">{{ formatDateCn(store.date) }} · 数据全部保存在本机</p>
+    <AppHeader title="薄肌计划" :subtitle="`${formatDateCn(store.date)} · 数据全部保存在本机`" />
 
     <div class="card">
-      <div class="stat-row">
-        <div class="stat">
-          <span class="stat-label">热量</span>
-          <span class="stat-value">
-            {{ fmtNumber(kcalRow?.intake ?? 0) }}
-            <small v-if="kcalRow?.target">/ {{ fmtNumber(kcalRow.target) }}</small>
-            <small v-else>kcal</small>
-          </span>
+      <div class="card-head">
+        <h2 class="card-title">今日进度</h2>
+        <span v-if="store.summary.incomplete" class="tag">不完整</span>
+      </div>
+
+      <template v-if="store.hasTargets">
+        <div v-for="row in progressRows" :key="row.key" class="progress-row">
+          <div class="progress-head">
+            <span>{{ row.label }}</span>
+            <span class="progress-numbers">
+              {{ fmtNumber(row.intake) }}
+              <template v-if="row.target">
+                / {{ row.key === 'sodiumMg' ? '≤' : '' }}{{ fmtNumber(row.target) }}
+                <span class="progress-pct" :class="{ 'over': isOver(row) }">
+                  {{ fmtPercent(row.ratio) }}
+                </span>
+              </template>
+              <template v-else>/ -</template>
+            </span>
+          </div>
+          <div class="progress">
+            <div
+              class="progress-fill"
+              :class="{ over: isOver(row) }"
+              :style="{ width: `${fillPercent(row.ratio)}%` }"
+            />
+          </div>
         </div>
-        <div class="stat">
-          <span class="stat-label">蛋白</span>
-          <span class="stat-value">
-            {{ fmtNumber(proteinRow?.intake ?? 0) }}
-            <small v-if="proteinRow?.target">/ {{ fmtNumber(proteinRow.target) }} g</small>
-            <small v-else>g</small>
-          </span>
-        </div>
+      </template>
+
+      <p v-else class="muted">
+        还没有目标值：热量与蛋白只能显示摄入量，算不出占比。先去「目标」页做一次首次校准。
+      </p>
+
+      <div class="stat-row" style="margin-top: 12px">
         <div class="stat">
           <span class="stat-label">晨重</span>
           <span class="stat-value">{{ weightText }}</span>
@@ -89,16 +123,17 @@ async function retryQueue(): Promise<void> {
           <span class="stat-value">{{ trainingText }}</span>
         </div>
       </div>
-      <p v-if="!store.hasTargets" class="muted">还没有目标值，去「目标」页做一次首次校准。</p>
-      <p v-if="store.summary.incomplete" class="muted">有 {{ store.pendingCount }} 条记录待补全营养数值。</p>
+
+      <p v-if="store.summary.incomplete" class="muted" style="margin-top: 8px">
+        有 {{ store.pendingCount }} 条记录还没拿到营养数值，配好模型联网后会自动补齐。
+      </p>
     </div>
 
-    <div class="quick-grid">
+    <div class="entry-grid">
       <van-button type="primary" block @click="router.push('/log/diet')">记饮食</van-button>
       <van-button plain type="primary" block @click="router.push('/log/workout')">记训练</van-button>
       <van-button plain type="primary" block @click="router.push('/log/body')">记身体</van-button>
       <van-button plain type="primary" block @click="router.push('/log/quick')">一句话记录</van-button>
-      <van-button plain type="primary" block @click="router.push('/summary')">当日汇总</van-button>
     </div>
 
     <div v-if="store.summary.hints.length" class="card">
@@ -122,6 +157,18 @@ async function retryQueue(): Promise<void> {
     </div>
 
     <div class="card">
+      <h2 class="card-title">更多</h2>
+      <div class="link-grid">
+        <van-button size="small" plain block @click="router.push('/summary')">当日汇总</van-button>
+        <van-button size="small" plain block @click="router.push('/trend')">趋势</van-button>
+        <van-button size="small" plain block @click="router.push('/targets')">目标与校准</van-button>
+        <van-button size="small" plain block @click="router.push('/profile')">档案</van-button>
+        <van-button size="small" plain block @click="router.push('/foods')">食物库</van-button>
+        <van-button size="small" plain block @click="router.push('/data')">数据</van-button>
+      </div>
+    </div>
+
+    <div class="card">
       <h2 class="card-title">本地数据</h2>
       <div class="kv">
         <span class="kv-key">数据库 schema</span>
@@ -141,75 +188,16 @@ async function retryQueue(): Promise<void> {
       </div>
     </div>
 
-    <div class="card">
-      <h2 class="card-title">还没有的内容</h2>
-      <p class="muted">
-        一句话 / 拍照记录与模型设置已经可用；周报 / 月报、推荐与校准向导对应
-        <code>docs/pwa-design.md</code> §13 的阶段 3。
-      </p>
-      <div class="link-grid">
-        <van-button size="small" plain block @click="router.push('/settings/model')">模型设置</van-button>
-        <van-button size="small" plain block @click="router.push('/foods')">食物库</van-button>
-        <van-button size="small" plain block @click="router.push('/log/quick')">拍照记录</van-button>
-      </div>
-    </div>
   </section>
 </template>
 
 <style scoped>
-.stat-row {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
+.progress-pct {
+  margin-left: 6px;
+  color: var(--brand);
 }
 
-.stat {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  background: var(--brand-soft);
-  border-radius: 10px;
-  padding: 10px;
-}
-
-.stat-label {
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-.stat-value {
-  font-size: 16px;
-  font-variant-numeric: tabular-nums;
-}
-
-.stat-value small {
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-.quick-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.link-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.card-warn {
-  border-color: var(--warn);
-  background: #fffaf3;
-}
-
-.hint-list {
-  margin: 0;
-  padding-left: 18px;
-  font-size: 13px;
-  line-height: 1.7;
+.progress-pct.over {
+  color: var(--danger);
 }
 </style>

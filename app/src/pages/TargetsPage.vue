@@ -13,6 +13,7 @@
 import { computed, onMounted, ref, shallowRef } from 'vue'
 import { showToast } from 'vant'
 import { useRouter } from 'vue-router'
+import AppHeader from '@/components/AppHeader.vue'
 import { addDays, daysBetween, todayIso } from '@/app/date'
 import { getProfile } from '@/data/repositories/profile'
 import { listDaysInRange } from '@/data/repositories/days'
@@ -433,8 +434,7 @@ const carbPerKg = computed(() => {
 
 <template>
   <section class="page" :data-ready="loaded ? 'true' : 'false'">
-    <h1 class="page-title">目标</h1>
-    <p class="page-subtitle">这里只维护目标值；改任何一项都会写一行校准记录。</p>
+    <AppHeader title="目标" subtitle="这里只维护目标值；改任何一项都会写一行校准记录。" back />
 
     <div v-if="!loaded" class="card">
       <p class="muted">读取中…</p>
@@ -627,27 +627,9 @@ const carbPerKg = computed(() => {
 </template>
 
 <style scoped>
-.actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.warn-text {
-  color: var(--warn);
-}
-
 .card-confirm {
   border-color: var(--warn);
   background: #fffaf3;
-}
-
-.hint-list {
-  margin: 0 0 8px;
-  padding-left: 18px;
-  font-size: 13px;
-  line-height: 1.7;
 }
 
 .calib-row {

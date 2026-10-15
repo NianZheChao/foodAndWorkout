@@ -10,6 +10,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
+import AppHeader from '@/components/AppHeader.vue'
 import { useDayStore } from '@/store/day'
 import { useDraftStore, type DraftIntakeRow, type DraftWorkoutRow } from '@/store/draft'
 import { compressImageFile } from '@/app/image'
@@ -146,8 +147,11 @@ async function adopt(next: DraftKind): Promise<void> {
 
 <template>
   <section class="page">
-    <h1 class="page-title">一句话 / 拍照记录</h1>
-    <p class="page-subtitle">随便说，模型只负责拆条目；克重与热量由本地换算。</p>
+    <AppHeader
+      title="一句话 / 拍照记录"
+      subtitle="随便说，模型只负责拆条目；克重与热量由本地换算。"
+      back
+    />
 
     <div class="card">
       <h2 class="card-title">记什么</h2>
@@ -432,15 +436,6 @@ async function adopt(next: DraftKind): Promise<void> {
 }
 
 .warn-text {
-  color: var(--warn);
   font-size: 13px;
-}
-
-.hint-list {
-  margin: 0;
-  padding-left: 18px;
-  color: var(--text-muted);
-  font-size: 13px;
-  line-height: 1.7;
 }
 </style>

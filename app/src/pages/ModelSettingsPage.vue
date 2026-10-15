@@ -8,6 +8,7 @@
 
 import { computed, onMounted, ref } from 'vue'
 import { showDialog, showToast } from 'vant'
+import AppHeader from '@/components/AppHeader.vue'
 import { clearModelCredentials, getModelConfig, saveModelConfig } from '@/data/repositories/modelConfig'
 import { clearLlmLogs, listLlmLogs, summarizeLlmUsage, type LlmUsageSummary } from '@/data/repositories/llmLogs'
 import { normalizeBaseUrl, probeModel } from '@/llm'
@@ -110,8 +111,11 @@ function formatTime(value?: number): string {
 
 <template>
   <section class="page">
-    <h1 class="page-title">模型设置</h1>
-    <p class="page-subtitle">只支持 OpenAI 兼容接口；记录链路不依赖它，没配也能照常记。</p>
+    <AppHeader
+      title="模型设置"
+      subtitle="只支持 OpenAI 兼容接口；记录链路不依赖它，没配也能照常记。"
+      back
+    />
 
     <div class="card">
       <h2 class="card-title">接口</h2>
@@ -187,21 +191,6 @@ function formatTime(value?: number): string {
 </template>
 
 <style scoped>
-.actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 12px 0 8px;
-}
-
-.hint-list {
-  margin: 0;
-  padding-left: 18px;
-  color: var(--text-muted);
-  font-size: 13px;
-  line-height: 1.7;
-}
-
 .log-list {
   margin: 8px 0;
 }

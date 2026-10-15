@@ -96,7 +96,9 @@ describe('档案页', () => {
     await inputFor(wrapper, '过敏原').setValue('花生')
     await inputFor(wrapper, '每餐可做饭(分钟)').setValue('25')
 
-    const equipment = wrapper.findAll('.van-checkbox').filter((item) => item.text() === '哑铃')
+    // 器材是多选标签（ChipSelect），点一下选中、再点取消
+    const equipment = wrapper.findAll('.chip').filter((item) => item.text() === '哑铃')
+    expect(equipment).toHaveLength(1)
     await equipment[0].trigger('click')
 
     await button(wrapper, '保存档案').trigger('click')

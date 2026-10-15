@@ -78,7 +78,7 @@ async function save(): Promise<void> {
 </script>
 
 <template>
-  <section class="page">
+  <div class="panel">
     <div class="card">
       <van-field v-model="weightAm" label="晨重(kg)" type="number" placeholder="晨起空腹，留空表示没称" />
       <van-field v-model="weightPm" label="睡前(kg)" type="number" placeholder="可选，仅用于算夜间净流失" />
@@ -116,7 +116,7 @@ async function save(): Promise<void> {
       </div>
       <p v-else class="muted">还没有可用晨重。</p>
     </div>
-  </section>
+  </div>
 </template>
 
 <style scoped>

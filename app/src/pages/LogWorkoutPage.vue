@@ -8,6 +8,7 @@
 
 import { computed, ref } from 'vue'
 import { showToast } from 'vant'
+import ChipSelect from '@/components/ChipSelect.vue'
 import { useDayStore } from '@/store/day'
 import { MET_TABLE, metKcal, volumeLoadOf } from '@/domain/training'
 import { fmtNumber } from '@/domain/format'
@@ -15,6 +16,7 @@ import type { WorkoutSet, WorkoutType } from '@/domain/types'
 
 const TYPES: WorkoutType[] = ['力量', '有氧', '球类', '拉伸', '其他']
 const MUSCLE_OPTIONS = ['胸', '背', '肩', '二头', '三头', '腿', '臀', '核心', '全身']
+const MET_OPTIONS = Object.keys(MET_TABLE)
 
 const store = useDayStore()
 
@@ -104,7 +106,7 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <section class="page">
+  <div class="panel">
     <div class="card">
       <van-field label="类型">
         <template #input>
@@ -123,11 +125,7 @@ async function submit(): Promise<void> {
       <template v-if="isCardio">
         <van-field label="项目（MET）">
           <template #input>
-            <van-radio-group v-model="metName" direction="horizontal">
-              <van-radio v-for="(_, name) in MET_TABLE" :key="name" :name="String(name)">
-                {{ name }}
-              </van-radio>
-            </van-radio-group>
+            <ChipSelect v-model="metName" :options="MET_OPTIONS" aria-label="有氧项目" />
           </template>
         </van-field>
         <van-field v-model="minutes" label="时长(min)" type="number" />
@@ -136,11 +134,7 @@ async function submit(): Promise<void> {
       <template v-else>
         <van-field label="目标肌群">
           <template #input>
-            <van-checkbox-group v-model="muscles" direction="horizontal">
-              <van-checkbox v-for="item in MUSCLE_OPTIONS" :key="item" :name="item" shape="square">
-                {{ item }}
-              </van-checkbox>
-            </van-checkbox-group>
+            <ChipSelect v-model="muscles" :options="MUSCLE_OPTIONS" multiple aria-label="目标肌群" />
           </template>
         </van-field>
         <van-field v-model="setCount" label="组数" type="number" placeholder="3" />
@@ -204,7 +198,7 @@ async function submit(): Promise<void> {
         容量 {{ fmtNumber(store.training.load) }} kg
       </div>
     </div>
-  </section>
+  </div>
 </template>
 
 <style scoped>

@@ -9,6 +9,7 @@
 
 import { computed, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import AppHeader from '@/components/AppHeader.vue'
 import EchartView, { type ChartOption } from '@/components/EchartView.vue'
 import { addDays, formatDateCn, recentDates, todayIso } from '@/app/date'
 import { getTargets } from '@/data/repositories/targets'
@@ -246,8 +247,7 @@ const tdeeRow = computed(() => {
 
 <template>
   <section class="page">
-    <h1 class="page-title">趋势</h1>
-    <p class="page-subtitle">全部本地计算，离线可用；睡前重不进均线与 TDEE。</p>
+    <AppHeader title="趋势" subtitle="全部本地计算，离线可用；睡前重不进均线与 TDEE。" />
 
     <div class="window-switch">
       <van-button
@@ -279,8 +279,8 @@ const tdeeRow = computed(() => {
             {{ trend.coverage.daysWithIntake }} 天（{{ fmtPercent(trend.coverage.intakeRatio) }}）
           </span>
         </div>
-        <div class="bar">
-          <div class="bar-fill" :style="{ width: `${Math.round(trend.coverage.intakeRatio * 100)}%` }" />
+        <div class="progress">
+          <div class="progress-fill" :style="{ width: `${Math.round(trend.coverage.intakeRatio * 100)}%` }" />
         </div>
         <div class="kv">
           <span class="kv-key">有体重记录</span>
@@ -288,8 +288,8 @@ const tdeeRow = computed(() => {
             {{ trend.coverage.daysWithWeight }} 天（{{ fmtPercent(trend.coverage.weightRatio) }}）
           </span>
         </div>
-        <div class="bar">
-          <div class="bar-fill" :style="{ width: `${Math.round(trend.coverage.weightRatio * 100)}%` }" />
+        <div class="progress">
+          <div class="progress-fill" :style="{ width: `${Math.round(trend.coverage.weightRatio * 100)}%` }" />
         </div>
         <div class="kv">
           <span class="kv-key">有训练记录</span>
@@ -544,57 +544,6 @@ const tdeeRow = computed(() => {
 .window-switch {
   display: flex;
   gap: 8px;
-  margin-bottom: 12px;
-}
-
-.bar {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--brand-soft);
-  margin: 4px 0 8px;
-  overflow: hidden;
-}
-
-.bar-fill {
-  height: 100%;
-  background: var(--brand);
-}
-
-.hint-list {
-  margin: 8px 0 0;
-  padding-left: 18px;
-  color: var(--text-muted);
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.table-scroll {
-  overflow-x: auto;
-}
-
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.data-table th,
-.data-table td {
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-  white-space: nowrap;
-}
-
-.data-table th {
-  color: var(--text-muted);
-  font-weight: 500;
-}
-
-.data-table td.num,
-.data-table th.num {
-  text-align: right;
 }
 
 .legacy-mark {

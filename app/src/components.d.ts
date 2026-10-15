@@ -11,6 +11,8 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AppHeader: typeof import('./components/AppHeader.vue')['default']
+    ChipSelect: typeof import('./components/ChipSelect.vue')['default']
     DateNav: typeof import('./components/DateNav.vue')['default']
     EchartView: typeof import('./components/EchartView.vue')['default']
     InstallHint: typeof import('./components/InstallHint.vue')['default']
@@ -18,9 +20,6 @@ declare module 'vue' {
     RouterView: typeof import('vue-router')['RouterView']
     VanButton: typeof import('vant/es')['Button']
     VanCell: typeof import('vant/es')['Cell']
-    VanCheckbox: typeof import('vant/es')['Checkbox']
-    VanCheckboxGroup: typeof import('vant/es')['CheckboxGroup']
-    VanEmpty: typeof import('vant/es')['Empty']
     VanField: typeof import('vant/es')['Field']
     VanPopup: typeof import('vant/es')['Popup']
     VanRadio: typeof import('vant/es')['Radio']

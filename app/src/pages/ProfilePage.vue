@@ -10,6 +10,8 @@
 import { computed, onMounted, ref, shallowRef } from 'vue'
 import { showToast } from 'vant'
 import { useRouter } from 'vue-router'
+import AppHeader from '@/components/AppHeader.vue'
+import ChipSelect from '@/components/ChipSelect.vue'
 import { getProfile, saveProfile } from '@/data/repositories/profile'
 import { isPlausibleWeight } from '@/domain/weight'
 import type { ProfileRecord } from '@/domain/types'
@@ -219,8 +221,11 @@ async function save(): Promise<void> {
 
 <template>
   <section class="page" :data-ready="loaded ? 'true' : 'false'">
-    <h1 class="page-title">档案</h1>
-    <p class="page-subtitle">长期事实，只在真正变化时改；不因为某一天的饮食或训练而改动。</p>
+    <AppHeader
+      title="档案"
+      subtitle="长期事实，只在真正变化时改；不因为某一天的饮食或训练而改动。"
+      back
+    />
 
     <div class="card">
       <h2 class="card-title">{{ isFirstTime ? '第一次填写' : '基础' }}</h2>
@@ -268,21 +273,13 @@ async function save(): Promise<void> {
 
     <div class="card">
       <h2 class="card-title">调味料有无</h2>
-      <van-checkbox-group v-model="seasoningsSelected">
-        <van-checkbox v-for="item in SEASONING_ITEMS" :key="item" :name="item" class="check-row">
-          {{ item }}
-        </van-checkbox>
-      </van-checkbox-group>
+      <ChipSelect v-model="seasoningsSelected" :options="SEASONING_ITEMS" multiple aria-label="常备调味料" />
       <p class="muted">勾上「手头有 / 常用」的；没勾的会按「需要买」处理。</p>
     </div>
 
     <div class="card">
       <h2 class="card-title">可用器材</h2>
-      <van-checkbox-group v-model="form.equipment">
-        <van-checkbox v-for="item in EQUIPMENT_ITEMS" :key="item" :name="item" class="check-row">
-          {{ item }}
-        </van-checkbox>
-      </van-checkbox-group>
+      <ChipSelect v-model="form.equipment" :options="EQUIPMENT_ITEMS" multiple aria-label="可用器材" />
       <p class="muted">只勾真正能用的：训练推荐不会安排用不到的器材。</p>
     </div>
 
@@ -321,18 +318,8 @@ async function save(): Promise<void> {
 </template>
 
 <style scoped>
-.actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.check-row {
-  margin: 6px 0;
-}
-
-.warn-text {
-  color: var(--warn);
+/* 表单里的分组标题与下面的内容留一点距离 */
+.card-title + .chips {
+  margin-bottom: 8px;
 }
 </style>

@@ -11,6 +11,7 @@
 
 import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import AppHeader from '@/components/AppHeader.vue'
 import DateNav from '@/components/DateNav.vue'
 import DietPanel from '@/pages/LogDietPage.vue'
 import WorkoutPanel from '@/pages/LogWorkoutPage.vue'
@@ -21,9 +22,9 @@ import { todayIso } from '@/app/date'
 type LogKind = 'diet' | 'workout' | 'body'
 
 const KINDS: { name: LogKind; title: string; hint: string }[] = [
-  { name: 'diet', title: '饮食', hint: '选食物 → 填份量 → 确认，换算与热量全部本地计算。' },
+  { name: 'diet', title: '饮食', hint: '选食物 → 填份量 → 确认；换算与热量全部本地计算。' },
   { name: 'workout', title: '训练', hint: '容量负荷与有氧消耗本地计算，不让模型算数。' },
-  { name: 'body', title: '身体', hint: '晨起空腹称重最稳定；没称就留空，不要用昨天的值补。' }
+  { name: 'body', title: '身体', hint: '晨起空腹称重最稳定；没称就留空，不用昨天的值补。' }
 ]
 
 const route = useRoute()
@@ -51,16 +52,14 @@ onMounted(() => {
 
 <template>
   <section class="page">
-    <h1 class="page-title">记录</h1>
-    <p class="page-subtitle">{{ current.hint }}</p>
+    <AppHeader title="记录" :subtitle="current.hint" />
 
-    <van-tabs v-model:active="activeTab" shrink>
-      <van-tab v-for="item in KINDS" :key="item.name" :name="item.name" :title="item.title" />
-    </van-tabs>
-
-    <div class="quick-entry">
-      <van-button size="small" plain type="primary" block @click="router.push('/log/quick')">
-        懒得逐项填？一句话 / 拍照记录
+    <div class="hub-bar">
+      <van-tabs v-model:active="activeTab" shrink>
+        <van-tab v-for="item in KINDS" :key="item.name" :name="item.name" :title="item.title" />
+      </van-tabs>
+      <van-button size="small" plain type="primary" class="quick-entry" @click="router.push('/log/quick')">
+        一句话 / 拍照
       </van-button>
     </div>
 
@@ -73,7 +72,23 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.hub-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 4px 10px;
+}
+
+.hub-bar :deep(.van-tabs__wrap) {
+  height: auto;
+}
+
 .quick-entry {
-  margin-bottom: 12px;
+  flex-shrink: 0;
 }
 </style>
