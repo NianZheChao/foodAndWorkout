@@ -6,6 +6,7 @@
  */
 
 import { db, SINGLETON_KEY } from '../db'
+import { toPlain } from '../plain'
 import type { ModelConfigRecord } from '@/domain/types'
 
 export function defaultModelConfig(): ModelConfigRecord {
@@ -24,14 +25,14 @@ export async function getModelConfig(): Promise<ModelConfigRecord> {
   const row = await db.modelConfig.get(SINGLETON_KEY)
   if (row) return row
   const fresh = defaultModelConfig()
-  await db.modelConfig.put(fresh)
+  await db.modelConfig.put(toPlain(fresh))
   return fresh
 }
 
 export async function saveModelConfig(patch: Partial<ModelConfigRecord>): Promise<ModelConfigRecord> {
   const current = await getModelConfig()
   const next: ModelConfigRecord = { ...current, ...patch, id: SINGLETON_KEY as 'current', updatedAt: Date.now() }
-  await db.modelConfig.put(next)
+  await db.modelConfig.put(toPlain(next))
   return next
 }
 

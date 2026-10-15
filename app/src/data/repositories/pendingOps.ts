@@ -1,4 +1,5 @@
 import { db } from '../db'
+import { toPlain } from '../plain'
 import { newId } from './intake'
 import type { PendingOp } from '@/domain/types'
 
@@ -13,7 +14,7 @@ export async function enqueue(kind: PendingOp['kind'], ref: string): Promise<str
     createdAt: now,
     updatedAt: now
   }
-  await db.pendingOps.put(op)
+  await db.pendingOps.put(toPlain(op))
   return op.id
 }
 
@@ -30,5 +31,5 @@ export async function countOpenOps(): Promise<number> {
 }
 
 export async function markOp(id: string, patch: Partial<PendingOp>): Promise<void> {
-  await db.pendingOps.update(id, { ...patch, updatedAt: Date.now() })
+  await db.pendingOps.update(id, toPlain({ ...patch, updatedAt: Date.now() }))
 }

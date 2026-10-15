@@ -6,10 +6,11 @@
  */
 
 import { db } from '../db'
+import { toPlain } from '../plain'
 import type { DraftRecord } from '@/domain/types'
 
 export async function putDraft(draft: DraftRecord): Promise<void> {
-  await db.drafts.put(draft)
+  await db.drafts.put(toPlain(draft))
 }
 
 export async function getDraft(id: string): Promise<DraftRecord | undefined> {

@@ -1,4 +1,5 @@
 import { db } from '../db'
+import { toPlain } from '../plain'
 import type { IntakeEntry } from '@/domain/types'
 
 export function newId(prefix: string): string {
@@ -20,12 +21,12 @@ export async function listIntakeInRange(start: string, end: string): Promise<Int
 
 export async function addIntake(entry: Omit<IntakeEntry, 'id'>): Promise<string> {
   const id = newId('in')
-  await db.intake.put({ ...entry, id })
+  await db.intake.put(toPlain({ ...entry, id }))
   return id
 }
 
 export async function updateIntake(id: string, patch: Partial<IntakeEntry>): Promise<void> {
-  await db.intake.update(id, patch)
+  await db.intake.update(id, toPlain(patch))
 }
 
 export async function removeIntake(id: string): Promise<void> {

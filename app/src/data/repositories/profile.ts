@@ -1,4 +1,5 @@
 import { db, SINGLETON_KEY } from '../db'
+import { toPlain } from '../plain'
 import type { ProfileRecord } from '@/domain/types'
 
 export async function getProfile(): Promise<ProfileRecord | undefined> {
@@ -6,5 +7,5 @@ export async function getProfile(): Promise<ProfileRecord | undefined> {
 }
 
 export async function saveProfile(record: ProfileRecord): Promise<void> {
-  await db.profile.put({ ...record, id: 'current', updatedAt: Date.now() })
+  await db.profile.put(toPlain({ ...record, id: 'current', updatedAt: Date.now() }))
 }

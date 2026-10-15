@@ -1,4 +1,5 @@
 import { db } from '../db'
+import { toPlain } from '../plain'
 import type { DayRecord, DaySummary } from '@/domain/types'
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六']
@@ -24,11 +25,14 @@ export async function ensureDay(date: string): Promise<DayRecord> {
 
 export async function updateDay(date: string, patch: Partial<DayRecord>): Promise<void> {
   await ensureDay(date)
-  await db.days.update(date, { ...patch, updatedAt: Date.now() })
+  await db.days.update(date, toPlain({ ...patch, updatedAt: Date.now() }))
 }
 
 export async function saveSummary(date: string, summary: DaySummary): Promise<void> {
-  await db.days.update(date, { summarySnapshot: summary, pendingCount: summary.pendingCount, updatedAt: Date.now() })
+  await db.days.update(
+    date,
+    toPlain({ summarySnapshot: summary, pendingCount: summary.pendingCount, updatedAt: Date.now() })
+  )
 }
 
 export async function listDaysInRange(start: string, end: string): Promise<DayRecord[]> {

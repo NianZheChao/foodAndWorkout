@@ -1,4 +1,5 @@
 import { db } from '../db'
+import { toPlain } from '../plain'
 import type { ReportRecord, ReportType } from '@/domain/types'
 
 export async function listReports(type?: ReportType): Promise<ReportRecord[]> {
@@ -11,5 +12,5 @@ export async function getReport(id: string): Promise<ReportRecord | undefined> {
 }
 
 export async function putReport(report: ReportRecord): Promise<void> {
-  await db.reports.put(report)
+  await db.reports.put(toPlain(report))
 }

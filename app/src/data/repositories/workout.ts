@@ -1,4 +1,5 @@
 import { db } from '../db'
+import { toPlain } from '../plain'
 import { newId } from './intake'
 import type { WorkoutEntry } from '@/domain/types'
 
@@ -8,12 +9,13 @@ export async function listWorkoutByDate(date: string): Promise<WorkoutEntry[]> {
 
 export async function addWorkout(entry: Omit<WorkoutEntry, 'id'>): Promise<string> {
   const id = newId('wo')
-  await db.workout.put({ ...entry, id })
+  // 页面会把 `muscles` / `sets` 这类响应式数组直接传进来，落库前必须拍平（DataCloneError）
+  await db.workout.put(toPlain({ ...entry, id }))
   return id
 }
 
 export async function updateWorkout(id: string, patch: Partial<WorkoutEntry>): Promise<void> {
-  await db.workout.update(id, patch)
+  await db.workout.update(id, toPlain(patch))
 }
 
 export async function removeWorkout(id: string): Promise<void> {

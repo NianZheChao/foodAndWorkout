@@ -1,4 +1,5 @@
 import { db } from '../db'
+import { toPlain } from '../plain'
 import { normalizeFoodName } from '@/domain/foodName'
 import type { Food, FoodSource, FoodUnit } from '@/domain/types'
 
@@ -82,7 +83,7 @@ export async function upsertFood(input: UpsertFoodInput): Promise<Food> {
     createdAt: existing?.createdAt ?? now,
     updatedAt: now
   }
-  await db.foods.put(food)
+  await db.foods.put(toPlain(food))
   return food
 }
 
@@ -98,25 +99,27 @@ export async function seedFoods(seed: SeedFood[], seedVersion: string): Promise<
         skipped += 1
         continue
       }
-      await db.foods.put({
-        id: item.name,
-        name: item.name,
-        nameNorm: normalizeFoodName(item.name),
-        category: item.category,
-        unit: item.unit,
-        kcal: item.kcal,
-        proteinG: item.proteinG,
-        fatG: item.fatG,
-        carbG: item.carbG,
-        fiberG: item.fiberG,
-        sodiumMg: item.sodiumMg,
-        basisGrams: item.basisGrams,
-        edibleNote: item.note,
-        source: 'seed',
-        sourceNote: seedVersion,
-        createdAt: now,
-        updatedAt: now
-      })
+      await db.foods.put(
+        toPlain({
+          id: item.name,
+          name: item.name,
+          nameNorm: normalizeFoodName(item.name),
+          category: item.category,
+          unit: item.unit,
+          kcal: item.kcal,
+          proteinG: item.proteinG,
+          fatG: item.fatG,
+          carbG: item.carbG,
+          fiberG: item.fiberG,
+          sodiumMg: item.sodiumMg,
+          basisGrams: item.basisGrams,
+          edibleNote: item.note,
+          source: 'seed',
+          sourceNote: seedVersion,
+          createdAt: now,
+          updatedAt: now
+        })
+      )
       inserted += 1
     }
   })

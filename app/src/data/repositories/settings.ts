@@ -1,4 +1,5 @@
 import { db, SINGLETON_KEY } from '../db'
+import { toPlain } from '../plain'
 import type { SettingsRecord } from '@/domain/types'
 
 export function defaultSettings(): SettingsRecord {
@@ -22,13 +23,13 @@ export async function getSettings(): Promise<SettingsRecord> {
   const row = await db.settings.get(SINGLETON_KEY)
   if (row) return row
   const fresh = defaultSettings()
-  await db.settings.put(fresh)
+  await db.settings.put(toPlain(fresh))
   return fresh
 }
 
 export async function saveSettings(patch: Partial<SettingsRecord>): Promise<SettingsRecord> {
   const current = await getSettings()
   const next: SettingsRecord = { ...current, ...patch, id: SINGLETON_KEY as 'current', updatedAt: Date.now() }
-  await db.settings.put(next)
+  await db.settings.put(toPlain(next))
   return next
 }

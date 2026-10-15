@@ -6,6 +6,7 @@
  */
 
 import { db } from '../db'
+import { toPlain } from '../plain'
 import { newId } from './intake'
 import type { LlmLog } from '@/domain/types'
 
@@ -22,7 +23,7 @@ export interface LlmLogInput {
 
 export async function logLlmCall(input: LlmLogInput, now = Date.now()): Promise<LlmLog> {
   const row: LlmLog = { id: newId('log'), createdAt: now, ...input }
-  await db.llmLogs.put(row)
+  await db.llmLogs.put(toPlain(row))
   return row
 }
 

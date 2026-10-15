@@ -1,4 +1,5 @@
 import { db, SINGLETON_KEY } from '../db'
+import { toPlain } from '../plain'
 import type { CalibrationRecord, TargetsRecord } from '@/domain/types'
 
 export async function getTargets(): Promise<TargetsRecord | undefined> {
@@ -8,7 +9,7 @@ export async function getTargets(): Promise<TargetsRecord | undefined> {
 /** 首次引导时写入目标（FR-902/FR-804）；已存在则整体覆盖。 */
 export async function putTargets(record: Omit<TargetsRecord, 'id' | 'updatedAt'>): Promise<TargetsRecord> {
   const next: TargetsRecord = { ...record, id: 'current', updatedAt: Date.now() }
-  await db.targets.put(next)
+  await db.targets.put(toPlain(next))
   return next
 }
 
@@ -17,7 +18,7 @@ export async function saveTargets(patch: Partial<TargetsRecord>): Promise<Target
   const current = await getTargets()
   if (!current) throw new Error('尚未初始化目标值，请先运行首次引导')
   const next: TargetsRecord = { ...current, ...patch, id: 'current', updatedAt: Date.now() }
-  await db.targets.put(next)
+  await db.targets.put(toPlain(next))
   return next
 }
 
@@ -40,8 +41,10 @@ export async function applyCalibration(input: {
     createdAt: Date.now()
   }
   await db.transaction('rw', db.targets, db.calibrations, async () => {
-    await db.calibrations.put(record)
-    await db.targets.put({ ...current, kcalTarget: input.kcalAfter, lastCalibrated: input.date, updatedAt: Date.now() })
+    await db.calibrations.put(toPlain(record))
+    await db.targets.put(
+      toPlain({ ...current, kcalTarget: input.kcalAfter, lastCalibrated: input.date, updatedAt: Date.now() })
+    )
   })
 }
 

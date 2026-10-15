@@ -6,7 +6,7 @@
 - 最后更新：2026-10-15
 - 应用版本：`0.1.0`（`app/package.json`）
 - 分支 / 最近提交：`main` / `5797bc2 feat: 报告摘要 + 周报月报 + 数字守卫 + 报告页（T3.1-T3.3）`
-- 质量基线（2026-10-15 实测）：`npm test` 32 文件 / 310 项（**有 1 个偶发失败的用例，7 次重跑里出现 3 次，见 §8**）；`npm run build`（含 `vue-tsc -b` 类型检查）通过
+- 质量基线（2026-10-15 实测）：`npm test` 33 文件 / 316 项（**有 1 个偶发失败的用例，7 次重跑里出现 3 次，见 §8**）；`npm run build`（含 `vue-tsc -b` 类型检查）通过
 
 ## 0. 三十秒速览
 
@@ -312,6 +312,7 @@ app/
 | 报告摘要（模型输入） | `domain/reportDigest.ts` `buildReportDigest` / `periodOf` / `coverageWarning` |
 | 报告数字守卫与门禁 | `domain/reportGuard.ts` `flagUnknownNumbers` / `applyCalibrationGate` / `applyCoverageGate` |
 | 报告生成与落库 | `application/report.ts` `buildDigest` / `generateReport` / `saveEditedContent` |
+| 落库前拍平响应式对象 | `data/plain.ts` `toPlain`（所有仓储写入都过它） |
 | 记录文件解析 | `io/markdown/record.ts` |
 | 路由表 | `app/src/router/index.ts`（权威表格在 `docs/pwa-design.md` §8.1） |
 | 底部 tab 匹配规则 | `app/src/App.vue` 的 `tabs[].match` |
@@ -323,7 +324,7 @@ app/
 ```bash
 npm install
 npm run dev       # 本地开发服务器
-npm test          # 单元 / 对拍 / 组件测试（32 文件 / 310 项）
+npm test          # 单元 / 对拍 / 组件测试（33 文件 / 316 项）
 npm run build     # vue-tsc 类型检查 + 生产构建（产物 dist/）
 npm run preview   # 预览构建产物 —— 测 PWA 行为请用这个，不要用 dev
 npm run seed      # 从 ../data/foods.csv 重新生成内置食物库种子
@@ -368,9 +369,10 @@ npm run build
     二级页面必须自带退路。样式一律用 `style.css` 的全局类，页面 `<style scoped>` 只写这一页特有的东西。
 14. **报告的数值区永远本地算、永远不可编辑**：模型只写文字。要改数字就去改记录或走校准流程；
     界面上不给「编辑数值」的入口，避免报告和记录各说各话。
-15. **写库前把响应式对象拍平**：界面传进 `application/` 的对象可能是 Vue 的响应式代理，
-    直接 `put` 会 `DataCloneError`（fake-indexeddb 与真机都会炸）。落库前深拷一份纯 JSON
-    （`saveEditedContent` 就是这么做的）。
+15. **写库前把响应式对象拍平**：界面传下来的对象可能是 Vue 的响应式代理，直接 `put` 会
+    `DataCloneError`。这一层**统一收在仓储写入**：`src/data/plain.ts` 的 `toPlain()`，
+    所有 `db.*.put/update` 的入参都过一遍。新写仓储时别漏 —— 只做浅拷贝（`{...obj}`）没用，
+    里面的数组 / 嵌套对象仍然是 Proxy。回归用例 `app/tests/plain-write.spec.ts`。
 16. **不要 `git push --force`**：包括重写历史这类操作，必须由使用者**显式授权**后再做，
     并且动手前先在仓库外留一份完整备份（含 `.git`）。
 
@@ -412,6 +414,11 @@ npm run build
   并给出示例，否则会「200 但正文为空」；② 模型名要填官方名（`deepseek-chat` / `deepseek-reasoner`），
   填了不存在的名字（例如把 Codex 这边的 `deepseek-flash` 抄过去）会 400。
   排查顺序写进了模型设置页的提示卡，别再对着 200 响应猜。
+- **`DataCloneError: could not be cloned` = 把 Vue 的响应式代理写进了 IndexedDB**（2026-10-15 真机报错）：
+  现场是记录训练时 `muscles.value`（`ref([])` 的 `.value`）一路传到 `db.workout.put`。
+  两个容易漏的点：① **浅拷贝没用** —— `{ ...entry }` 只复制一层，里面的 `muscles` / `sets` 仍是 Proxy；
+  ② 之前只在报告的 `saveEditedContent` 里做了深拷，等于把同一类 bug 留在了别处。
+  现在统一在仓储写入层拍平（`src/data/plain.ts`），`tests/plain-write.spec.ts` 逐条覆盖各写入函数。
 - **`tests/quick-log-page.spec.ts` 是偶发失败的**（2026-10-15 观察：7 次重跑里 3 次失败，且每次失败的用例不一定是同一个）。
   症状是断言 UI 文案时读到的还是旧内容：用例先用 `vi.waitFor` 等草稿落库，再用**一次** `flushPromises()` 就去读渲染结果，
   在 20 个 worker 并行抢资源时这次等待不够。修法很直接——把断言本身也包进 `vi.waitFor`。
