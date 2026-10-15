@@ -823,6 +823,20 @@ Pinia 只放**会话态与派生态**：
 - 所有表单控件使用原生 label；支持系统字号缩放；触控目标 ≥ 44px。
 - 术语沿用契约（「菜品/做法」「组x次x重量」「晨重」），避免出现「卡路里」「组数x次数」等混用。
 
+### 8.5 样式基元（2026-10-15 补）
+
+- **设计 token 与共享类集中在 `app/src/style.css`**：颜色（`--brand` / `--accent` / `--danger` …）、
+  圆角、阴影、间距做成变量；卡片 `.card`、键值行 `.kv`、数字块 `.stat`、进度 `.progress`、
+  按钮网格 `.entry-grid` / `.link-grid`、提示 `.hint-list`、表格 `.data-table`、空状态 `.empty` 都是全局类。
+  页面 `<style scoped>` 只写这一页特有的东西。
+- **页面间距由 flex + `gap` 负责**（`.page` / `.panel`），卡片不再自带外边距 —— 这样「卡片套进别的容器」
+  不会突然贴在一起，也不会出现双重内边距。
+- **Vant 主题桥接**：在 `html:root` 覆盖 `--van-primary-color` 等变量，把组件默认蓝改成品牌绿，
+  与打包顺序无关。
+- **共享组件**：`components/AppHeader.vue`（标题 / 副标题 / 返回 —— 底部 tab 只有五个入口，
+  二级页面必须自带退路）、`components/ChipSelect.vue`（会换行的标签按钮组，单选 / 多选共用）、
+  `components/EchartView.vue`（ECharts SVG 薄封装）、`components/DateNav.vue`、`components/InstallHint.vue`。
+
 ---
 
 ## 9. PWA 与离线设计

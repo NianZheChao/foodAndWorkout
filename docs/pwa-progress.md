@@ -5,8 +5,8 @@
 
 - 最后更新：2026-10-15
 - 应用版本：`0.1.0`（`app/package.json`）
-- 分支 / 最近提交：`main` / `2fbf529 feat: 待办队列自动重放 + 图片降级引导 + 安装引导`
-- 质量基线（2026-10-15 实测）：`npm test` 26 文件 / 245 项（**有 1 个偶发失败的用例，7 次重跑里出现 3 次，见 §8**）；`npm run build`（含 `vue-tsc -b` 类型检查）通过
+- 分支 / 最近提交：`main` / `7b3e659 ui: 设计基元 + 导航可达性 + 标签选择（AppHeader/ChipSelect/Vant 主题）`
+- 质量基线（2026-10-15 实测）：`npm test` 27 文件 / 250 项（**有 1 个偶发失败的用例，7 次重跑里出现 3 次，见 §8**）；`npm run build`（含 `vue-tsc -b` 类型检查）通过
 
 ## 0. 三十秒速览
 
@@ -151,6 +151,30 @@
   Chromium 抓到 `beforeinstallprompt` 才给「安装」按钮；关掉后记进 localStorage（只存这一条 UI 偏好，TD-08）。
   验收：`app/tests/install-hint.spec.ts`（4 项）。
 
+### 2.6 UI 一轮（2026-10-15 补）
+
+只动样式与导航，**没有碰任何计算口径**（`npm run expected` 后 fixture 零差异）。
+
+- **设计基元收口到 `app/src/style.css`**：颜色 / 圆角 / 阴影 / 间距做成 token，卡片、键值行、
+  数字块、进度条、按钮网格、提示列表、表格、空状态全部改成全局类。以前每页各写一份
+  （`.actions` / `.hint-list` / `.warn-text` 在五个页面里重复），现在改一处所有页面跟着变。
+  卡片不再自带 `margin-bottom`，页面用 `.page`（flex + `gap`）统一排版。
+- **Vant 主题桥接**：`html:root` 里覆盖 `--van-primary-color` 等变量，把组件的默认蓝换成品牌绿
+  （按钮、tabbar、勾选框、开关、tabs 一起生效）。底部 tab 加了图标（Vant 图标字体是内嵌 base64，离线可用）。
+- **`components/AppHeader.vue`**：标题 + 可选副标题 + 返回。**修掉一个真问题**：
+  `/targets`、`/profile` 之前只能从趋势页的按钮进去，二级页面全都没有退路；
+  现在今日页「更多」里有 当日汇总 / 趋势 / 目标与校准 / 档案 / 食物库 / 数据 六个入口，
+  二级页面一律带返回（有历史就 `back()`，直接打开就回今日页）。
+- **`components/ChipSelect.vue`**：会换行的标签按钮组，单选 / 多选共用。
+  替掉 MET（15 项）、肌群（9 项）、调味料（11 项）、器材（7 项）的横排 checkbox —— 横排在手机上挤成一团，
+  也不满足 §8.4 的 44px 触控底线。
+- **今日页重排**：热量 / 蛋白 / 钠改成带进度条的进度行（超出变红），晨重与训练收进数字块，
+  队列卡片与「更多」入口分开，删掉了过期的「还没有的内容」文案。
+- **其它**：食物列表项右侧显示 kcal、选中态加勾与左侧色条；三个记录面板修掉**双重 `.page` 内边距**；
+  `.card` 里的 `van-field` 去掉左右内边距，和卡片留白对齐。
+- 验收：`app/tests/chip-select.spec.ts`（新增）、`app/tests/pages.spec.ts` 新增「导航可达性」两项
+  （今日页六个入口可达、五个二级页都有返回按钮且能回来源页），`app/tests/profile-page.spec.ts` 跟着改成标签选择。
+
 ## 3. 部分完成：有明确缺口（优先补这些）
 
 | 编号 | 已实现 | 缺什么 | 建议落点 |
@@ -231,7 +255,7 @@ app/
 ```bash
 npm install
 npm run dev       # 本地开发服务器
-npm test          # 单元 / 对拍 / 组件测试（26 文件 / 245 项）
+npm test          # 单元 / 对拍 / 组件测试（27 文件 / 250 项）
 npm run build     # vue-tsc 类型检查 + 生产构建（产物 dist/）
 npm run preview   # 预览构建产物 —— 测 PWA 行为请用这个，不要用 dev
 npm run seed      # 从 ../data/foods.csv 重新生成内置食物库种子
@@ -271,6 +295,8 @@ npm run build
     重放路径再用默认值就成了「越重试越长」。以后新增可入队的任务，记得同样留一个开关。
 12. **队列执行器只自动回填「干净」结果**：可疑值（越界 / 宏量不自洽）与低置信度一律转 `needs-attention`，
     等用户确认（FR-407）。不要为了「自动」而把需要拍板的数值偷偷写进记录。
+13. **新页面用 `components/AppHeader.vue` 开头**（标题 + 副标题 + `back`）：底部 tab 只有五个入口，
+    二级页面必须自带退路。样式一律用 `style.css` 的全局类，页面 `<style scoped>` 只写这一页特有的东西。
 
 ## 8. 已知坑（踩过的，别再踩）
 
@@ -297,6 +323,9 @@ npm run build
   否则测试会在与业务无关的地方炸掉。
 - **`listOpenOps()` 只返回未完成的队列项**：断言「收口了没有」要看 `db.pendingOps` 的原始行，
   不要写成 `(await listOpenOps())[0].status`（队列清空时是 undefined，报错信息很难懂）。
+- **`.card` 不再自带 `margin-bottom`**：页面间距由 `.page` / `.panel` 的 `flex + gap` 负责。
+  把卡片塞进一个普通 `<div>` 里就会贴在一起 —— 记录页的三个面板以前各自套了一层 `<section class="page">`，
+  结果是 **48px 的双重内边距**，改成 `.panel` 才对。
 - **`tests/quick-log-page.spec.ts` 是偶发失败的**（2026-10-15 观察：7 次重跑里 3 次失败，且每次失败的用例不一定是同一个）。
   症状是断言 UI 文案时读到的还是旧内容：用例先用 `vi.waitFor` 等草稿落库，再用**一次** `flushPromises()` 就去读渲染结果，
   在 20 个 worker 并行抢资源时这次等待不够。修法很直接——把断言本身也包进 `vi.waitFor`。
