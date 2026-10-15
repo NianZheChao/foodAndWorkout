@@ -1,0 +1,58 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+
+const route = useRoute()
+const router = useRouter()
+
+/**
+ * 底部五个入口（docs/pwa-design.md §8.1）。
+ *
+ * 这里有两处专门为「能不能回到首页」服务：
+ * 1. 高亮按**前缀分组**匹配：`/log/*` 全都归到「记录」，不会因为匹配不上而退回高亮「今日」。
+ * 2. 跳转一律走 `@click`，不依赖 tabbar 的 `change` 事件——`change` 只在选中项**变化**时触发，
+ *    点一个已经高亮的 tab 就成了死键，用户会直接卡在没有返回入口的页面上。
+ */
+const tabs = [
+  { name: 'today', label: '今日', to: '/today', match: ['/today', '/summary'] },
+  { name: 'log', label: '记录', to: '/log', match: ['/log'] },
+  { name: 'trend', label: '趋势', to: '/trend', match: ['/trend'] },
+  { name: 'reports', label: '报告', to: '/reports', match: ['/reports'] },
+  { name: 'settings', label: '设置', to: '/settings', match: ['/settings'] }
+]
+
+const activeIndex = computed(() => {
+  // 匹配不到任何分组时不高亮（-1）；因为跳转走 click，仍然点得动，不会卡住
+  return tabs.findIndex((tab) => tab.match.some((prefix) => route.path.startsWith(prefix)))
+})
+
+function go(to: string): void {
+  if (route.path !== to) void router.push(to)
+}
+</script>
+
+<template>
+  <div class="app-shell">
+    <main class="app-main">
+      <router-view />
+    </main>
+    <van-tabbar :model-value="activeIndex">
+      <van-tabbar-item v-for="item in tabs" :key="item.name" @click="go(item.to)">
+        {{ item.label }}
+      </van-tabbar-item>
+    </van-tabbar>
+  </div>
+</template>
+
+<style scoped>
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-main {
+  flex: 1;
+  padding-bottom: calc(50px + env(safe-area-inset-bottom));
+}
+</style>

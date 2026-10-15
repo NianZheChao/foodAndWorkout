@@ -37,6 +37,15 @@
 - `profile.md` 记录的是长期事实，不要因为单次表现就改它。
 - 推荐类输出写进 `plans/`，复盘类输出写进 `reviews/`，不要混进 `records/`。
 
+## PWA 应用（`app/`）
+
+`app/` 是「薄肌计划」PWA 的源码（Vue 3 + TypeScript + Vite），与工作区共用同一份数据口径。
+
+- 改动 `app/` 后至少跑 `npm test` 与 `npm run build`（在 `app/` 下），两者都要过。
+- `app/` 同样不写绝对路径。
+- `app/src/domain/` 的确定性计算口径必须与 `scripts/nutrition.py` 一致；改口径、或改记录文件（`records/*.md`）的解析，都要先跑 `npm run expected` 重生成对拍期望值，再跑 `npm test`，并同步更新 `docs/pwa-design.md` §5.2。
+- 需求与设计以 `docs/pwa-requirements.md`、`docs/pwa-design.md` 为准，不要在代码里另立一套规则。
+
 ## 同步
 
 写完记录 / 计划 / 复盘后，按 `README.md` 的「本地改动同步」把改动 commit + push 到 GitHub：只 `git add` 本次动过的文件，`git pull --rebase --autostash` 之后再 `git push`。遇到冲突或推送被拒就停下报告，不要 `push --force`，也不要回退历史。

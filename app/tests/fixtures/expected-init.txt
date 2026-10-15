@@ -1,0 +1,23 @@
+| 项目 | 数值 | 说明 |
+| --- | ---: | --- |
+| 基础代谢 BMR | 1836.2 kcal | Mifflin-St Jeor |
+| 活动系数 | 1.55 | 中度（每周 3-4 练），每周 3 练 |
+| TDEE | 2846.2 kcal | BMR x 活动系数 |
+| 阶段 | 减脂 | 热量调整 -15% |
+| 热量目标 | 2420 kcal | |
+| 蛋白质 | 176 g | 2.0 g/kg |
+| 脂肪 | 70 g | 0.8 g/kg |
+| 碳水 | 270 g | 剩余热量 |
+| 目标速率 | -0.39 kg/周 | 由热量调整反推，profile.md |
+
+把下面这些值填进 targets.md 的 front-matter（或加 --write 自动写入）：
+
+tdee_kcal: 2846
+kcal_target: 2420
+protein_target_g: 176
+fat_target_g: 70
+carb_target_g: 270
+weekly_training_days: 3
+weekly_sets_per_muscle: 10
+target_rate_kg_per_week: -0.39
+last_calibrated: 2026-10-15
