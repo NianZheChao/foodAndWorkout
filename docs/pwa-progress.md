@@ -5,16 +5,16 @@
 
 - 最后更新：2026-10-15
 - 应用版本：`0.1.0`（`app/package.json`）
-- 分支 / 最近提交：`main` / `e84ffc8 feat: 趋势页 + 目标页 + 档案页（P0 主链路闭环）`
-- 质量基线（2026-10-15 实测）：`npm test` 24 文件 / 228 项（**有 1 个偶发失败的用例，7 次重跑里出现 3 次，见 §8**）；`npm run build`（含 `vue-tsc -b` 类型检查）通过
+- 分支 / 最近提交：`main` / `2fbf529 feat: 待办队列自动重放 + 图片降级引导 + 安装引导`
+- 质量基线（2026-10-15 实测）：`npm test` 26 文件 / 245 项（**有 1 个偶发失败的用例，7 次重跑里出现 3 次，见 §8**）；`npm run build`（含 `vue-tsc -b` 类型检查）通过
 
 ## 0. 三十秒速览
 
 | 阶段 | 范围 | 状态 |
 | --- | --- | --- |
-| 阶段 0 | 地基：脚手架、PWA 接入、Dexie schema + 仓储层、种子食物库 | ✅ 完成 |
+| 阶段 0 | 地基：脚手架、PWA 接入（含安装引导）、Dexie schema + 仓储层、种子食物库 | ✅ 完成 |
 | 阶段 1 | 本地能力闭环：领域计算、三类记录页、当日汇总、趋势页 | ✅ 完成 |
-| 阶段 2 | 模型能力：配置与连通性、LLM 客户端、食物补全、自由文本 / 图片记录、澄清引擎 | 🟡 主体完成，4 处收尾未做（见 §3） |
+| 阶段 2 | 模型能力：配置与连通性、LLM 客户端、食物补全、自由文本 / 图片记录、澄清引擎、队列执行器 | 🟡 主体完成，2 处收尾未做（见 §3） |
 | 阶段 3 | 报告与推荐：周报月报、推荐周计划、校准向导 | ⬜ 未开始 |
 | 阶段 4 | 数据治理：导入导出、快照回滚、食物库治理、提醒、设置 | ⬜ 未开始 |
 
@@ -41,7 +41,7 @@
 - **PWA 接入**：manifest（名称「薄肌计划」、`start_url: /today`、`display: standalone`、maskable 图标）、
   由 `vite-plugin-pwa` 生成的 Service Worker（`registerType: autoUpdate`）、192 / 512 / maskable / apple-touch 四个图标。
   落点 `app/vite.config.ts`（`VitePWA` 块）、`app/public/icons/`、`app/scripts/gen-icons.mjs`。
-  **缺口**：安装引导 UI（「添加到主屏幕」提示）未接，见 §3。
+  安装引导（「添加到主屏幕」提示条）见 §2.5。
 - **Dexie schema + 迁移框架 + 仓储层**：`app/src/data/db.ts` 声明 **15 个对象存储**
   （`days` / `intake` / `workout` / `foods` / `reports` / `targets` / `calibrations` / `profile` /
   `settings` / `snapshots` / `pendingOps` / `llmLogs` / `modelConfig` / `drafts` / `meta`），
@@ -133,14 +133,29 @@
 - **导航**：`/trend`、`/targets`、`/profile` 三个路由从 `PlaceholderPage` 换成真页面，
   并加进了 `app/tests/pages.spec.ts` 的挂载冒烟清单。
 
+### 2.5 阶段 2 收尾 + 安装引导（2026-10-15 补）
+
+- **T2.4 队列执行器**：`app/src/application/queue.ts`。`runQueue()` 在**应用启动**与**网络恢复**（`online` 事件）
+  时串行重放 `pendingOps`，也在今日页留了「立即重试」按钮。
+  三条自我约束写在文件头：只在结果干净时自动写（可疑值 / 低置信度转「需要处理」，FR-407）；
+  重放时不重复入队（否则每次重试都再排一条）；任何一步失败都不抛异常，只更新队列项状态。
+  `food.resolve` 的重放按**食物名**找到同名待补全条目，用条目自己的克数回算并清掉 `pendingFlag`；
+  缺克数就转「需要处理」而不是猜一个克数。`log.parse` 的重放用草稿里的原文重新解析
+  —— 图片按设计不落库，只有图片的草稿只能请用户重拍。
+  验收：`app/tests/queue.spec.ts`（11 项，含「未配模型不发请求」「可疑值不回填」「不重复入队」「同一查询只请求一次」）。
+- **T2.7 图片降级引导**：`Store` 现在保留失败分类（`draft.errorKind`），`LogQuickPage` 在
+  `unsupported-image` 时给两条明确出口：去掉图片改用文字重试、或去模型设置换一个支持视觉的模型。
+  验收：`app/tests/quick-log-page.spec.ts` 新增用例。
+- **T0.2 安装引导**：`app/src/components/InstallHint.vue`，挂在今日页顶部。
+  已装（`display-mode: standalone`）不提示；iOS 写清「分享 → 添加到主屏」（FR-1510）；
+  Chromium 抓到 `beforeinstallprompt` 才给「安装」按钮；关掉后记进 localStorage（只存这一条 UI 偏好，TD-08）。
+  验收：`app/tests/install-hint.spec.ts`（4 项）。
+
 ## 3. 部分完成：有明确缺口（优先补这些）
 
 | 编号 | 已实现 | 缺什么 | 建议落点 |
 | --- | --- | --- | --- |
-| T0.2 | manifest / SW / 图标全部就绪，preview 下可安装 | 「添加到主屏幕」引导 UI；iOS 的安装说明 | `app/src/App.vue` 或 `/settings` 页加一次性提示条 |
-| T2.4 | 失败已按「等网络 / 需处理」写入 `pendingOps`；未算出的条目以 `pendingFlag` 占位；今日页有队列角标 | 联网后**自动串行重放**的执行器（目前只能重新触发单次解析） | 新建 `app/src/application/queue.ts`，由 `store` 在网络恢复 / 应用启动时驱动 |
 | T2.5 | 每次调用都写 `llmLogs`；模型设置页汇总次数 / 失败数 / 输入输出估算，并可清空 | 单次任务超出预算 2 倍时的「是否继续」确认弹窗 | `app/src/llm/index.ts`（估算是现成的）+ `LogQuickPage` 的交互 |
-| T2.7 | 压缩 / 张数上限 / 隐私提示 / 用后即弃均已实现并测到；`unsupported-image` 已分类 | 模型不支持图片时的 **UI 引导文案**（提示改用文字记录，或换个支持视觉的模型） | `app/src/pages/LogQuickPage.vue` 的错误分支 |
 | 澄清 | `mutedFields`（「不再追问」名单）机制可用 | 没有 UI 入口让用户维护这份名单，目前只能由调用方传入 | `/settings` 页（该页整体还是占位，见 T4.6） |
 
 ## 4. 未开始
@@ -204,6 +219,7 @@ app/
 | 食物库查找与模糊匹配 | `application/foodLibrary.ts` `findFoodFuzzy` / `suggestKnownFoods` |
 | 未知食物落库 | `application/foodResolve.ts` `resolveFoods` / `toFood` |
 | 自由文本 → 草稿 | `application/logParse.ts` `parseLog` |
+| 待办队列重放 | `application/queue.ts` `runQueue`（启动 / 联网时驱动） |
 | 记录文件解析 | `io/markdown/record.ts` |
 | 路由表 | `app/src/router/index.ts`（权威表格在 `docs/pwa-design.md` §8.1） |
 | 底部 tab 匹配规则 | `app/src/App.vue` 的 `tabs[].match` |
@@ -215,7 +231,7 @@ app/
 ```bash
 npm install
 npm run dev       # 本地开发服务器
-npm test          # 单元 / 对拍 / 组件测试（24 文件 / 228 项）
+npm test          # 单元 / 对拍 / 组件测试（26 文件 / 245 项）
 npm run build     # vue-tsc 类型检查 + 生产构建（产物 dist/）
 npm run preview   # 预览构建产物 —— 测 PWA 行为请用这个，不要用 dev
 npm run seed      # 从 ../data/foods.csv 重新生成内置食物库种子
@@ -251,6 +267,10 @@ npm run build
 9. **不做日历 / `.ics` 导出**（OQ-8 / TD-09），提醒只保留应用内提醒与本地通知能力探测。
 10. **新增页面要同步三处**：`app/src/router/index.ts` 的路由、`app/tests/pages.spec.ts` 的挂载冒烟清单、
     本文 §5.2 的函数索引。有链式 IndexedDB 读取的页面（如目标页）要留一个 `data-ready` 标记给测试用。
+11. **队列重放必须传 `{ enqueueOnFailure: false }`**：`resolveFoods` / `parseLog` 默认在失败时写待办队列，
+    重放路径再用默认值就成了「越重试越长」。以后新增可入队的任务，记得同样留一个开关。
+12. **队列执行器只自动回填「干净」结果**：可疑值（越界 / 宏量不自洽）与低置信度一律转 `needs-attention`，
+    等用户确认（FR-407）。不要为了「自动」而把需要拍板的数值偷偷写进记录。
 
 ## 8. 已知坑（踩过的，别再踩）
 
@@ -272,6 +292,11 @@ npm run build
 - **页面里有「读库 → 再读库」的链式 await 时，`flushPromises()` 挡不住 fake-indexeddb 的宏任务**：
   要么用 `vi.waitFor` 包住断言，要么给页面加 `data-ready` 标记再等它变 true（目标页 / 档案页用的是后者）。
   只在库里断言、不等界面刷新，会出现「库里有值但按钮还没渲染」的假失败。
+- **jsdom 缺 `matchMedia`、canvas、`beforeinstallprompt`**：用到它们的组件要把「能力探测」写成守卫
+  （`InstallHint.vue` 先判 `typeof window.matchMedia === 'function'`，`EchartView.vue` 直接跳过 jsdom），
+  否则测试会在与业务无关的地方炸掉。
+- **`listOpenOps()` 只返回未完成的队列项**：断言「收口了没有」要看 `db.pendingOps` 的原始行，
+  不要写成 `(await listOpenOps())[0].status`（队列清空时是 undefined，报错信息很难懂）。
 - **`tests/quick-log-page.spec.ts` 是偶发失败的**（2026-10-15 观察：7 次重跑里 3 次失败，且每次失败的用例不一定是同一个）。
   症状是断言 UI 文案时读到的还是旧内容：用例先用 `vi.waitFor` 等草稿落库，再用**一次** `flushPromises()` 就去读渲染结果，
   在 20 个 worker 并行抢资源时这次等待不够。修法很直接——把断言本身也包进 `vi.waitFor`。
@@ -280,7 +305,7 @@ npm run build
 ## 9. 建议的推进顺序
 
 1. ~~T1.6 趋势页 + M9 目标页 + M10 档案页~~ —— 2026-10-15 已完成（见 §2.4），P0 主链路已闭环。
-2. **T2.4 队列执行器 + T2.7 图片降级引导 + T0.2 安装引导** —— 都是小改动，但直接影响日常可用性。
+2. ~~T2.4 队列执行器 + T2.7 图片降级引导 + T0.2 安装引导~~ —— 2026-10-15 已完成（见 §2.5）。
 3. **T3.1 → T3.2 → T3.3** —— 先有本地摘要，再有周报月报，最后做历史版本；这条顺序能把「数字守卫」一次做对。
    `domain/trend.ts` 的区间聚合已经是 `reportDigest` 的现成底座（报告摘要 = 同一次聚合换个周期标签）。
 4. **T3.4 / T3.5** —— 推荐与校准，依赖前面的摘要与校准留痕；校准页与 `calibrations` 链路已经打通，向导只需接模型建议。
@@ -291,9 +316,11 @@ npm run build
 
 ## 10. 交接自检清单
 
-- [ ] `cd app && npm install && npm test`（24 文件 / 228 项；单个用例偶发失败时重跑一次即可，见 §8）
+- [ ] `cd app && npm install && npm test`（26 文件 / 245 项；单个用例偶发失败时重跑一次即可，见 §8）
 - [ ] `npm run build` 通过
 - [ ] `npm run preview` 能打开今日页，底部 tab 来回切换不卡死
+- [ ] 今日页顶部有一次性的「装到主屏幕」提示，点「知道了」后刷新不再出现
+- [ ] 断网记一餐（会出现「待补全」）→ 配好模型 → 回今日页点「立即重试」，条目补齐且角标消失
 - [ ] `/trend` 切 7 / 14 / 28 天，URL 里的 `?days=` 跟着变；空区间显示「未记录」而不是 0
 - [ ] `/profile` 填一份档案 → `/targets` 用首次估算写入目标，并在「校准记录」里看到一行
 - [ ] 在 `/targets` 把热量改掉 200 kcal：确认卡片要出现「超过 ±150 kcal」与「样本可能不足」提示
