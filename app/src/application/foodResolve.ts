@@ -51,6 +51,14 @@ export interface ResolveFoodsOutcome {
   queued: string[]
 }
 
+export interface ResolveBehavior {
+  /**
+   * 失败时是否写待办队列，默认写（记录链路的第一次尝试）。
+   * 队列重放时必须传 `false`：否则每次重放失败都会再排一条，队列越滚越长（§6.10）。
+   */
+  enqueueOnFailure?: boolean
+}
+
 function rangeChecks(facts: NutritionFacts): string[] {
   const messages: string[] = []
   const labels: Record<keyof NutritionFacts, string> = {
@@ -202,7 +210,8 @@ async function queueFailures(queries: readonly string[], failure: RunFailure): P
  */
 export async function resolveFoods(
   queries: readonly string[],
-  options: RunOptions = {}
+  options: RunOptions = {},
+  behavior: ResolveBehavior = {}
 ): Promise<ResolveFoodsOutcome> {
   const unique = [...new Set(queries.map((query) => query.trim()).filter(Boolean))]
   const candidates: FoodResolveCandidate[] = []
@@ -232,7 +241,7 @@ export async function resolveFoods(
     return {
       candidates,
       failure: { kind: result.kind, message: result.message, retriable: result.retriable },
-      queued: await queueFailures(batch, result)
+      queued: behavior.enqueueOnFailure === false ? [] : await queueFailures(batch, result)
     }
   }
 

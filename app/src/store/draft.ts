@@ -16,6 +16,7 @@ import { resolveGrams } from '@/domain/clarify'
 import { factsForGrams } from '@/domain/nutrition'
 import { inferMusclesFromExercise } from '@/domain/training'
 import type { RunOptions } from '@/llm'
+import type { LlmErrorKind } from '@/llm/errors'
 import type { useDayStore } from './day'
 import type { DraftKind, DraftRecord, Food, Meal, NutritionFacts, WorkoutSet } from '@/domain/types'
 
@@ -47,6 +48,8 @@ export const useDraftStore = defineStore('draft', () => {
   const answers = ref<Record<string, string>>({})
   const busy = ref(false)
   const error = ref<string>()
+  /** 失败分类。界面据此给不同的下一步（例如「模型不支持图片」要引导改用文字） */
+  const errorKind = ref<LlmErrorKind>()
   const notices = ref<string[]>([])
   const mismatch = ref<{ expected: DraftKind; actual: DraftKind }>()
   const committed = ref(false)
@@ -60,6 +63,7 @@ export const useDraftStore = defineStore('draft', () => {
     draft.value = undefined
     answers.value = {}
     error.value = undefined
+    errorKind.value = undefined
     notices.value = []
     mismatch.value = undefined
     committed.value = false
@@ -72,6 +76,7 @@ export const useDraftStore = defineStore('draft', () => {
   ): Promise<'ok' | 'kind-mismatch' | 'failed'> {
     busy.value = true
     error.value = undefined
+    errorKind.value = undefined
     notices.value = []
     mismatch.value = undefined
     committed.value = false
@@ -81,6 +86,7 @@ export const useDraftStore = defineStore('draft', () => {
       answers.value = {}
       if (outcome.status === 'failed') {
         error.value = outcome.failure.message
+        errorKind.value = outcome.failure.kind
         if (outcome.queued) notices.value.push('已放进待办队列，等模型可用时会自动重试')
         return 'failed'
       }
@@ -244,6 +250,7 @@ export const useDraftStore = defineStore('draft', () => {
     answers,
     busy,
     error,
+    errorKind,
     notices,
     mismatch,
     committed,

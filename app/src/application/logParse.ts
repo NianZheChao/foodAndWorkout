@@ -40,6 +40,14 @@ export type ParseLogOutcome =
   | { status: 'kind-mismatch'; draft: DraftRecord; plan: ClarifyPlan; expected: DraftKind; actual: DraftKind }
   | { status: 'failed'; failure: RunFailure; draft: DraftRecord; queued: boolean }
 
+export interface ParseLogBehavior {
+  /**
+   * 失败时是否写待办队列，默认写。队列重放时必须传 `false`，
+   * 否则「重放失败 → 又排一条」会自增队列（§6.10）。
+   */
+  enqueueOnFailure?: boolean
+}
+
 interface MappedIntake {
   items: DraftIntakeItem[]
   assumptions: string[]
@@ -110,7 +118,11 @@ function emptyDraft(input: ParseLogInput, id: string, now: number): DraftRecord 
   }
 }
 
-export async function parseLog(input: ParseLogInput, options: RunOptions = {}): Promise<ParseLogOutcome> {
+export async function parseLog(
+  input: ParseLogInput,
+  options: RunOptions = {},
+  behavior: ParseLogBehavior = {}
+): Promise<ParseLogOutcome> {
   const id = input.draftId ?? newId('draft')
   const now = Date.now()
   const images = (input.images ?? []).slice(0, MAX_IMAGES)
@@ -146,7 +158,8 @@ export async function parseLog(input: ParseLogInput, options: RunOptions = {}): 
     const draft = emptyDraft(input, id, now)
     draft.assumptions = ['这段时间的模型调用没成功，原文已留在草稿里，可以直接重试或手工录入']
     await putDraft(draft)
-    const queued = result.retriable || result.kind === 'not-configured'
+    const queued =
+      behavior.enqueueOnFailure !== false && (result.retriable || result.kind === 'not-configured')
     if (queued) {
       const opId = await enqueue('log.parse', id)
       await markOp(opId, { status: 'waiting', lastError: result.message })

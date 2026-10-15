@@ -1,9 +1,31 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { showToast } from 'vant'
+import { runQueue } from '@/application/queue'
+import InstallHint from '@/components/InstallHint.vue'
 
 const route = useRoute()
 const router = useRouter()
+
+/**
+ * 待办队列在启动与网络恢复时自动重放（§6.10）。
+ * 没配模型或离线时 `runQueue` 直接返回，不会发请求、也不会写任何数据。
+ */
+async function drainQueue(): Promise<void> {
+  try {
+    const report = await runQueue()
+    const message = report.messages[report.messages.length - 1]
+    if (report.done && message) showToast({ message, position: 'bottom' })
+  } catch {
+    // 队列重放失败不能影响打开应用
+  }
+}
+
+onMounted(() => {
+  void drainQueue()
+  window.addEventListener('online', () => void drainQueue())
+})
 
 /**
  * 底部五个入口（docs/pwa-design.md §8.1）。
@@ -34,6 +56,7 @@ function go(to: string): void {
 <template>
   <div class="app-shell">
     <main class="app-main">
+      <InstallHint v-if="route.path === '/today'" />
       <router-view />
     </main>
     <van-tabbar :model-value="activeIndex">

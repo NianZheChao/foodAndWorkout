@@ -13,6 +13,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     DateNav: typeof import('./components/DateNav.vue')['default']
     EchartView: typeof import('./components/EchartView.vue')['default']
+    InstallHint: typeof import('./components/InstallHint.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     VanButton: typeof import('vant/es')['Button']

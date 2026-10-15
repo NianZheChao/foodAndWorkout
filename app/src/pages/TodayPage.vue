@@ -3,7 +3,9 @@
 
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { showToast } from 'vant'
 import { useDayStore } from '@/store/day'
+import { runQueue } from '@/application/queue'
 import { fmtNumber } from '@/domain/format'
 import { formatDateCn, todayIso } from '@/app/date'
 import { db, SCHEMA_VERSION } from '@/data/db'
@@ -17,6 +19,7 @@ const store = useDayStore()
 const foodCount = ref(0)
 const queueCount = ref(0)
 const seedVersion = ref('-')
+const retrying = ref(false)
 
 onMounted(async () => {
   await store.load(todayIso())
@@ -36,6 +39,22 @@ const trainingText = computed(() => {
   if (store.summary.training.isRestDay) return '休息日'
   return `${fmtNumber(store.summary.training.minutes)} 分钟 · ${store.summary.training.sets} 组`
 })
+
+/** 手动重试待补全队列：平时它在启动 / 联网时自动跑，这里是兜底入口（§6.10）。 */
+async function retryQueue(): Promise<void> {
+  retrying.value = true
+  try {
+    const report = await runQueue()
+    queueCount.value = await countOpenOps()
+    const message =
+      report.messages[report.messages.length - 1] ??
+      report.skipped[0] ??
+      (report.done ? '队列已处理' : '队列里没有可自动处理的项目')
+    showToast({ message, position: 'bottom' })
+  } finally {
+    retrying.value = false
+  }
+}
 </script>
 
 <template>
@@ -87,6 +106,19 @@ const trainingText = computed(() => {
       <ul class="hint-list">
         <li v-for="hint in store.summary.hints" :key="hint">{{ hint }}</li>
       </ul>
+    </div>
+
+    <div v-if="queueCount" class="card card-warn">
+      <h2 class="card-title">待补全队列（{{ queueCount }}）</h2>
+      <p class="muted">
+        这些记录当时没拿到营养数值（未配模型或离线），配好模型后会自动补全并回算。
+      </p>
+      <div class="link-grid">
+        <van-button size="small" type="primary" plain :loading="retrying" @click="retryQueue">
+          立即重试
+        </van-button>
+        <van-button size="small" plain @click="router.push('/settings/model')">模型设置</van-button>
+      </div>
     </div>
 
     <div class="card">
@@ -164,9 +196,14 @@ const trainingText = computed(() => {
 
 .link-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 8px;
   margin-top: 10px;
+}
+
+.card-warn {
+  border-color: var(--warn);
+  background: #fffaf3;
 }
 
 .hint-list {

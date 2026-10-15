@@ -8,7 +8,7 @@
  */
 
 import { computed, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import { useDayStore } from '@/store/day'
 import { useDraftStore, type DraftIntakeRow, type DraftWorkoutRow } from '@/store/draft'
@@ -22,6 +22,7 @@ const MEALS: Meal[] = ['早餐', '午餐', '晚餐', '加餐']
 const MAX_IMAGES = 3
 
 const route = useRoute()
+const router = useRouter()
 const day = useDayStore()
 const draft = useDraftStore()
 
@@ -125,6 +126,17 @@ async function drop(): Promise<void> {
   customAnswers.value = {}
 }
 
+/** 模型不支持图片时的出口：丢掉图片，用原文当文字再试一次（图片不落库，丢得掉）。 */
+async function dropImagesAndRetry(): Promise<void> {
+  images.value = []
+  draft.reset()
+  if (!text.value.trim()) {
+    showToast({ message: '没有文字可解析，直接写一句吃了什么吧', position: 'bottom' })
+    return
+  }
+  await parse()
+}
+
 async function adopt(next: DraftKind): Promise<void> {
   await draft.adoptKind(next)
   kind.value = next
@@ -193,7 +205,17 @@ async function adopt(next: DraftKind): Promise<void> {
       <h2 class="card-title">这次没解析成功</h2>
       <p class="muted">{{ draft.error }}</p>
       <p class="muted">原文已留在草稿里，可以直接重试，或者去「记录 → 饮食 / 训练」手工录入。</p>
-      <van-button size="small" plain type="primary" @click="parse">重试</van-button>
+      <template v-if="draft.errorKind === 'unsupported-image'">
+        <p class="muted">
+          这条路走不通有两个出口：<strong>改用文字描述</strong>（把食材与份量写清楚，效果通常不差），
+          或者去「模型设置」换一个支持视觉的模型。
+        </p>
+        <div class="actions">
+          <van-button size="small" type="primary" @click="dropImagesAndRetry">去掉图片，用文字重试</van-button>
+          <van-button size="small" plain @click="router.push('/settings/model')">去模型设置</van-button>
+        </div>
+      </template>
+      <van-button v-else size="small" plain type="primary" @click="parse">重试</van-button>
     </div>
 
     <div v-if="draft.notices.length" class="card">

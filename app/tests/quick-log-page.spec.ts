@@ -19,6 +19,7 @@ import { saveModelConfig } from '@/data/repositories/modelConfig'
 import { seedFoods, upsertFood } from '@/data/repositories/foods'
 import { FOOD_SEED_VERSION, foodSeed } from '@/data/seed'
 import { todayIso } from '@/app/date'
+import { useDraftStore } from '@/store/draft'
 import { fakeResponse } from './helpers/llm'
 
 const TEXT = '今天中午吃了一顿西红柿鸡蛋拌面，4个西红柿，5个鸡蛋，80g干重的干面条，油盐正常量'
@@ -176,5 +177,27 @@ describe('一句话记录：草稿 → 澄清 → 落库', () => {
 
     expect(wrapper.text()).toContain('这次没解析成功')
     expect((await listOpenDrafts(DATE))[0].rawText).toBe(TEXT)
+  })
+
+  it('模型不支持图片时引导「改用文字」或「换模型」，不是只报一句错（T2.7）', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => fakeResponse({ error: { message: 'image input is not supported' } }, 400)) as unknown as typeof fetch
+    )
+    const wrapper = await mountPage()
+    // 图片压缩在 jsdom 里跑不动，这里直接驱动 store：验证的是「失败分类 → 引导文案」这一段
+    await useDraftStore().submit({
+      date: DATE,
+      text: '拍了一张午饭',
+      kind: 'intake',
+      images: ['data:image/jpeg;base64,AAAA']
+    })
+    await flushPromises()
+
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('改用文字描述')
+    })
+    expect(wrapper.text()).toContain('去模型设置')
+    expect(wrapper.text()).toContain('去掉图片，用文字重试')
   })
 })
