@@ -31,6 +31,13 @@ function tabItems(wrapper: VueWrapper): VueWrapper[] {
   return wrapper.findAll('.van-tabbar-item') as unknown as VueWrapper[]
 }
 
+/** 按文案找按钮（`includes` 匹配，容忍前后空白）。 */
+function button(wrapper: VueWrapper, label: string) {
+  const found = wrapper.findAll('button').find((item) => item.text().includes(label))
+  if (!found) throw new Error(`找不到按钮「${label}」`)
+  return found
+}
+
 /** 高亮的底部 tab 下标；一个都没高亮时返回 -1。 */
 function activeIndex(wrapper: VueWrapper): number {
   return tabItems(wrapper).findIndex((item) => item.classes().includes('van-tabbar-item--active'))
@@ -153,17 +160,20 @@ describe('今日页方格按钮 → 记录 hub', () => {
 })
 
 describe('导航可达性（二级页面不能是孤岛）', () => {
-  it('今日页「更多」能进目标 / 档案 / 数据 / 食物库 / 趋势 / 当日汇总', async () => {
+  it('今日页「更多」能进目标 / 档案 / 模型设置 / 数据 / 食物库 / 趋势 / 当日汇总', async () => {
     const { wrapper, router } = await mountApp('/today')
     const more = () =>
       wrapper
         .findAll('.link-grid .van-button')
-        .filter((item) => ['当日汇总', '趋势', '目标与校准', '档案', '食物库', '数据'].includes(item.text()))
+        .filter((item) =>
+          ['当日汇总', '趋势', '目标与校准', '档案', '模型设置', '食物库', '数据'].includes(item.text())
+        )
     expect(more().map((item) => item.text())).toEqual([
       '当日汇总',
       '趋势',
       '目标与校准',
       '档案',
+      '模型设置',
       '食物库',
       '数据'
     ])
@@ -171,6 +181,7 @@ describe('导航可达性（二级页面不能是孤岛）', () => {
     const expected: [string, string][] = [
       ['目标与校准', '/targets'],
       ['档案', '/profile'],
+      ['模型设置', '/settings/model'],
       ['数据', '/data']
     ]
     for (const [label, path] of expected) {
@@ -183,6 +194,24 @@ describe('导航可达性（二级页面不能是孤岛）', () => {
         expect(router.currentRoute.value.path, label).toBe(path)
       })
     }
+  })
+
+  it('不依赖任何状态就能进模型设置：今日页「更多」里常驻入口（2026-10-15 回归）', async () => {
+    // 那次事故：入口只剩「待补全队列」卡片里那个按钮，而卡片只在队列非空时渲染，
+    // 于是正常状态下整个应用都进不去模型设置。
+    const { wrapper, router } = await mountApp('/today')
+    expect(wrapper.text()).not.toContain('待补全队列')
+    await button(wrapper, '模型设置').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/settings/model')
+  })
+
+  it('底部 tab 的「设置」页给出模型设置入口（设置页整体还没做）', async () => {
+    const { wrapper, router } = await mountApp('/settings')
+    expect(wrapper.find('.page-title').text()).toBe('设置')
+    await button(wrapper, '模型设置').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/settings/model')
   })
 
   it('二级页面都带返回按钮，点了回到来源页', async () => {

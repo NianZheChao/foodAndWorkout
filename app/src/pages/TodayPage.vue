@@ -163,6 +163,7 @@ async function retryQueue(): Promise<void> {
         <van-button size="small" plain block @click="router.push('/trend')">趋势</van-button>
         <van-button size="small" plain block @click="router.push('/targets')">目标与校准</van-button>
         <van-button size="small" plain block @click="router.push('/profile')">档案</van-button>
+        <van-button size="small" plain block @click="router.push('/settings/model')">模型设置</van-button>
         <van-button size="small" plain block @click="router.push('/foods')">食物库</van-button>
         <van-button size="small" plain block @click="router.push('/data')">数据</van-button>
       </div>
