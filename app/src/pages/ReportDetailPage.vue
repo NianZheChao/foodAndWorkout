@@ -160,6 +160,14 @@ const whitelistSize = computed(() => (digest.value ? buildNumberWhitelist(digest
             </span>
           </div>
           <div class="kv">
+            <span class="kv-key">钠 / 纤维</span>
+            <span class="kv-value">
+              钠日均 {{ fmtNumber(digest.intake.avgSodiumMg) }}（≤{{ fmtNumber(digest.intake.sodiumMaxMg) }}，超标
+              {{ digest.intake.sodiumOverDays }} 天）· 纤维日均 {{ fmtNumber(digest.intake.avgFiberG) }}（目标
+              {{ fmtNumber(digest.intake.fiberTargetG) }}，达标 {{ digest.intake.fiberHitDays }} 天）
+            </span>
+          </div>
+          <div class="kv">
             <span class="kv-key">体重</span>
             <span class="kv-value">
               <template v-if="digest.weight.changeKg !== undefined">
@@ -184,6 +192,34 @@ const whitelistSize = computed(() => (digest.value ? buildNumberWhitelist(digest
             </span>
           </div>
           <div class="kv">
+            <span class="kv-key">训练强度 / 有氧</span>
+            <span class="kv-value">
+              <template v-if="digest.training.rpeAvg !== undefined">
+                RPE 均值 {{ fmtNumber(digest.training.rpeAvg) }}<template v-if="digest.training.highRpeEntries">
+                  （≥8 有 {{ digest.training.highRpeEntries }} 条）</template>
+                ·
+              </template>
+              有氧估算 {{ fmtNumber(digest.training.burnKcal) }} kcal
+            </span>
+          </div>
+          <div class="kv">
+            <span class="kv-key">恢复（睡眠 / 精力 / 酸痛）</span>
+            <span class="kv-value">
+              <template v-if="digest.recovery.sleepDays">
+                睡眠均值 {{ fmtNumber(digest.recovery.avgSleepHours) }} h（{{ digest.recovery.sleepDays }} 天有记录<template
+                  v-if="digest.recovery.shortSleepDays"
+                >，&lt;6h {{ digest.recovery.shortSleepDays }} 天</template>）
+              </template>
+              <template v-else>无睡眠记录</template>
+              ·
+              <template v-if="digest.recovery.ratedDays">
+                自评 {{ digest.recovery.ratedDays }} 天（低精力 {{ digest.recovery.lowEnergyDays ?? 0 }} ·
+                高酸痛 {{ digest.recovery.highSorenessDays ?? 0 }}）
+              </template>
+              <template v-else>无自评</template>
+            </span>
+          </div>
+          <div class="kv">
             <span class="kv-key">当前目标 / 上次校准</span>
             <span class="kv-value">
               {{ fmtNumber(digest.currentTargets.kcalTarget) }} kcal ·
@@ -197,6 +233,16 @@ const whitelistSize = computed(() => (digest.value ? buildNumberWhitelist(digest
                 {{ fmtNumber(digest.tdee.value) }} kcal（{{ digest.tdee.confidence }}，{{ digest.tdee.sampleDays }} 天样本）
               </template>
               <template v-else>样本不足（至少 7 天同时有体重与饮食）</template>
+            </span>
+          </div>
+          <div v-if="digest.previousDigest?.numbers" class="kv">
+            <span class="kv-key">上一期（{{ digest.previousDigest.period }}）</span>
+            <span class="kv-value">
+              日均热量 {{ fmtNumber(digest.previousDigest.numbers.avgKcal) }} · 训练
+              {{ digest.previousDigest.numbers.trainingDays }} 天 · 容量
+              {{ fmtNumber(digest.previousDigest.numbers.volumeLoadKg) }} kg<template
+                v-if="digest.previousDigest.numbers.weightChangeKg !== undefined"
+              > · 体重 {{ fmtSigned(digest.previousDigest.numbers.weightChangeKg) }} kg</template>
             </span>
           </div>
         </template>

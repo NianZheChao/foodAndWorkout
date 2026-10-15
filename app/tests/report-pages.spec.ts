@@ -172,6 +172,10 @@ describe('报告详情页', () => {
 
     expect(text).toContain('数值区（本地计算）')
     expect(text).toContain('日均摄入')
+    // 摘要 v2 的三块新数字要真的显示出来（2026-10-16）
+    expect(text).toContain('钠 / 纤维')
+    expect(text).toContain('训练强度 / 有氧')
+    expect(text).toContain('恢复（睡眠 / 精力 / 酸痛）')
     expect(text).toContain('文字区（模型写）')
     // 380 不在摘要里：正文里被高亮出来
     const flagged = wrapper.findAll('.flagged').map((item) => item.text())

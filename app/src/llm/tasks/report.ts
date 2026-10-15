@@ -46,6 +46,8 @@ const SHARED_PROMPT =
   // 小写 `json` 是 DeepSeek JSON 模式的硬要求（缺了会返回空正文）
   '你是减脂增肌教练 assistant，只输出 json（JSON），不要解释、不要 Markdown。' +
   '所有数字只能来自输入摘要，禁止自己计算或估计任何数值；摘要里没有的数就先不给数。' +
+  '摘要里的 recovery 块是睡眠 / 精力 / 酸痛（都带"有几天记录"）：恢复段落只能引用它，' +
+  '样本天数很少时直说"样本不足"，不要据此下判断；' +
   'findings 每条必须标 kind：fact=摘要里能直接看到的，inference=你的推断。' +
   'calibration.recommended 只在有把握且幅度合理时为 true，deltaKcal 是相对当前热量目标的建议调整量。' +
   '输出 {"summary":"","training":{"assessment":"","notes":[]},"diet":{"assessment":"","notes":[]},' +

@@ -82,6 +82,10 @@ export async function buildDigest(type: ReportType, endDate: string): Promise<Di
       date,
       weightAmKg: dayRow?.weightAmKg,
       weightPmKg: dayRow?.weightPmKg,
+      // 恢复类字段：报告要用它们支撑「恢复」那一段（趋势页不展示，见 §6.4.1）
+      sleepHours: dayRow?.sleepHours,
+      energy: dayRow?.energy,
+      soreness: dayRow?.soreness,
       intake: sumFacts(entries.map((entry) => entry.computed)),
       hasIntakeRows: entries.length > 0,
       workouts: workoutByDate.get(date) ?? []
@@ -95,7 +99,20 @@ export async function buildDigest(type: ReportType, endDate: string): Promise<Di
     days,
     targets,
     previous: previous
-      ? { period: previous.label, conclusion: previous.content?.summary ?? '' }
+      ? {
+          period: previous.label,
+          conclusion: previous.content?.summary ?? '',
+          // 上一期的数字：只有文字时「比上期」只能靠模型随口说（2026-10-16 补）
+          numbers: {
+            avgKcal: previous.digest.intake.avgKcal,
+            recordedDays: previous.digest.intake.recordedDays,
+            kcalHitDays: previous.digest.intake.kcalHitDays,
+            proteinHitDays: previous.digest.intake.proteinHitDays,
+            trainingDays: previous.digest.training.days,
+            volumeLoadKg: previous.digest.training.volumeLoadKg,
+            weightChangeKg: previous.digest.weight.changeKg
+          }
+        }
       : undefined
   })
   return { period: { ...period, start, end, days: dates.length }, digest }

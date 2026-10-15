@@ -166,6 +166,13 @@ export interface ReportDigest {
     kcalHitDays: number
     proteinHitDays: number
     recordedDays: number
+    /** 钠与纤维：与 `domain/targets.ts` 的缺口提示同口径（钠超上限的天数、纤维达标的天数） */
+    avgSodiumMg: number
+    sodiumMaxMg: number
+    sodiumOverDays: number
+    avgFiberG: number
+    fiberTargetG: number
+    fiberHitDays: number
   }
   weight: {
     amSeries: { date: string; kg: number }[]
@@ -181,10 +188,50 @@ export interface ReportDigest {
     byMuscle: { muscle: string; sets: number }[]
     targetDays: number
     targetSetsPerMuscle: number
+    /** 主观强度：条目数加权（一场训练一行），高 RPE 用 ≥8 计 */
+    rpeAvg?: number
+    highRpeEntries?: number
+    /** 有氧 / 球类的估算消耗合计（kcal） */
+    burnKcal: number
+  }
+  /**
+   * 恢复（2026-10-16 新增，§6.4.1）。
+   *
+   * 输出契约里本来就有 `recovery.notes`，但此前摘要**没有任何恢复类输入** —— 模型只能写空话。
+   * 自报数据稀疏，所以每个指标都带"有几天记录"，让模型知道样本量（NFR-14：只给能支撑建议的字段）。
+   */
+  recovery: {
+    /** 有睡眠记录的天数 */
+    sleepDays: number
+    avgSleepHours?: number
+    /** 睡眠不足 6 小时的天数（唯一真正可行动的那一档） */
+    shortSleepDays?: number
+    /** 有精力 / 酸痛自评的天数（两者同页填写） */
+    ratedDays: number
+    /** 精力 ≤2 的天数 */
+    lowEnergyDays?: number
+    /** 酸痛 ≥4 的天数 */
+    highSorenessDays?: number
   }
   currentTargets: { kcalTarget: number; proteinTargetG: number; lastCalibrated?: string }
   tdee?: { value: number; sampleDays: number; confidence: '初步估算' | '可用' }
-  previousDigest?: { period: string; conclusion: string }
+  previousDigest?: {
+    period: string
+    conclusion: string
+    /** 上一期的关键数字：给了才能做真正可核对的「环比」（只给文字结论时模型只能随口说） */
+    numbers?: PreviousDigestNumbers
+  }
+}
+
+/** 上一期的关键数字（环比用）。刻意只留这几项：每多一项都要能说清它支撑哪条结论（NFR-14）。 */
+export interface PreviousDigestNumbers {
+  avgKcal: number
+  recordedDays: number
+  kcalHitDays: number
+  proteinHitDays: number
+  trainingDays: number
+  volumeLoadKg: number
+  weightChangeKg?: number
 }
 
 export interface ReportContent {

@@ -12,7 +12,7 @@ import dayjs from 'dayjs'
 import { buildTrend, type TrendDayInput, type TrendTargets } from '@/domain/trend'
 import { MIN_TDEE_POINTS } from '@/domain/tdee'
 import { isPlausibleWeight } from '@/domain/weight'
-import type { ReportDigest, ReportType } from '@/domain/types'
+import type { PreviousDigestNumbers, ReportDigest, ReportType } from '@/domain/types'
 
 /** 摘要需要比趋势页多两个目标字段（训练天数下限与上次校准日）。 */
 export type DigestTargets = TrendTargets & {
@@ -29,13 +29,23 @@ export interface ReportPeriod {
   days: number
 }
 
+/** 报告比趋势页多要三个"恢复类"字段（趋势页不展示，但报告要用来支撑恢复建议）。 */
+export type ReportDayInput = TrendDayInput & {
+  sleepHours?: number
+  energy?: number
+  soreness?: number
+}
+
 export interface ReportDigestInput {
   period: ReportPeriod
   /** 区间内的每一天，升序；没有记录的天也要占位 */
-  days: readonly TrendDayInput[]
+  days: readonly ReportDayInput[]
   targets: DigestTargets
-  /** 上一期的结论文本（月报用于「与上月对比」，周报可不传） */
-  previous?: { period: string; conclusion: string }
+  /**
+   * 上一期（摘要的结论文字 + 关键数字）。数字是 2026-10-16 加的：
+   * 只有文字结论时，"比上期"只能靠模型随口说，数字守卫也无从核对。
+   */
+  previous?: { period: string; conclusion: string; numbers?: PreviousDigestNumbers }
 }
 
 /** ISO 周号：`2026-W41`。周四所在的年份决定跨年周的归属。 */
@@ -79,6 +89,14 @@ function round1(value: number): number {
   return Math.round(value * 10) / 10
 }
 
+/** 睡眠不足 6 小时算「短睡」：唯一真正可行动的那一档（睡太久不需要建议）。 */
+const SHORT_SLEEP_HOURS = 6
+/** 精力 ≤2 / 酸痛 ≥4 才算信号，中间的"还行"不进摘要（NFR-14 注意力预算）。 */
+const LOW_ENERGY = 2
+const HIGH_SORENESS = 4
+/** RPE ≥8 算高（接近力竭）。 */
+const HIGH_RPE = 8
+
 /**
  * 产出报告摘要。所有数字都来自本地计算；缺失一律留空（`undefined`）而不是补 0，
  * 这样模型不会把「没记录」当成「摄入为 0」。
@@ -89,6 +107,28 @@ export function buildReportDigest(input: ReportDigestInput): ReportDigest {
     targets: input.targets,
     windowDays: input.period.days
   })
+
+  const intakeDays = trend.rows.filter((row) => row.hasIntakeRows)
+  const recordedDays = intakeDays.length
+  const avgOf = (pick: (row: (typeof intakeDays)[number]) => number): number =>
+    recordedDays ? intakeDays.reduce((sum, row) => sum + pick(row), 0) / recordedDays : 0
+
+  // 恢复类：只用真的被填过的天做分母，并把"有几天记录"一起给出去（自报数据稀疏，模型必须知道样本量）
+  const sleepValues = input.days.map((day) => day.sleepHours).filter((value): value is number => typeof value === 'number')
+  const energyValues = input.days.map((day) => day.energy).filter((value): value is number => typeof value === 'number')
+  const sorenessValues = input.days.map((day) => day.soreness).filter((value): value is number => typeof value === 'number')
+  const ratedDays = Math.max(energyValues.length, sorenessValues.length)
+  const recovery = {
+    sleepDays: sleepValues.length,
+    avgSleepHours: sleepValues.length ? round1(sleepValues.reduce((sum, value) => sum + value, 0) / sleepValues.length) : undefined,
+    shortSleepDays: sleepValues.length ? sleepValues.filter((value) => value < SHORT_SLEEP_HOURS).length : undefined,
+    ratedDays,
+    lowEnergyDays: energyValues.length ? energyValues.filter((value) => value <= LOW_ENERGY).length : undefined,
+    highSorenessDays: sorenessValues.length ? sorenessValues.filter((value) => value >= HIGH_SORENESS).length : undefined
+  }
+
+  const rpeValues = trend.training.aggregate.rpe
+  const rpeAvg = rpeValues.length ? round1(rpeValues.reduce((sum, value) => sum + value, 0) / rpeValues.length) : undefined
 
   const amSeries = trend.rows
     .filter((row) => row.basis !== '' && isPlausibleWeight(row.weightKg))
@@ -120,7 +160,14 @@ export function buildReportDigest(input: ReportDigestInput): ReportDigest {
       proteinTargetG: input.targets.proteinTargetG,
       kcalHitDays: trend.intake.kcalHit.hit,
       proteinHitDays: trend.intake.proteinHit.hit,
-      recordedDays: trend.intake.days
+      recordedDays: trend.intake.days,
+      // 钠是上限口径、纤维是目标口径，判定与 `domain/targets.ts` 的缺口提示一致（不另立阈值）
+      avgSodiumMg: round1(avgOf((row) => row.intake.sodiumMg)),
+      sodiumMaxMg: input.targets.sodiumMaxMg,
+      sodiumOverDays: intakeDays.filter((row) => input.targets.sodiumMaxMg > 0 && row.intake.sodiumMg > input.targets.sodiumMaxMg).length,
+      avgFiberG: round1(avgOf((row) => row.intake.fiberG)),
+      fiberTargetG: input.targets.fiberTargetG,
+      fiberHitDays: intakeDays.filter((row) => input.targets.fiberTargetG > 0 && row.intake.fiberG >= input.targets.fiberTargetG).length
     },
     weight: {
       amSeries,
@@ -135,8 +182,12 @@ export function buildReportDigest(input: ReportDigestInput): ReportDigest {
       volumeLoadKg: round1(trend.training.load),
       byMuscle: trend.training.muscles.map((row) => ({ muscle: row.name, sets: row.sets })),
       targetDays: input.targets.weeklyTrainingDays ?? 0,
-      targetSetsPerMuscle: input.targets.weeklySetsPerMuscle ?? 0
+      targetSetsPerMuscle: input.targets.weeklySetsPerMuscle ?? 0,
+      rpeAvg,
+      highRpeEntries: rpeValues.length ? rpeValues.filter((value) => value >= HIGH_RPE).length : undefined,
+      burnKcal: round1(trend.training.aggregate.burn)
     },
+    recovery,
     currentTargets: {
       kcalTarget: input.targets.kcalTarget,
       proteinTargetG: input.targets.proteinTargetG,
@@ -154,7 +205,11 @@ export function buildReportDigest(input: ReportDigestInput): ReportDigest {
     }
   }
   if (input.previous) {
-    digest.previousDigest = { period: input.previous.period, conclusion: input.previous.conclusion.slice(0, 200) }
+    digest.previousDigest = {
+      period: input.previous.period,
+      conclusion: input.previous.conclusion.slice(0, 200),
+      numbers: input.previous.numbers
+    }
   }
   return digest
 }

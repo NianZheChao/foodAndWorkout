@@ -24,6 +24,10 @@ const days: TrendDayInput[] = records.map((record) => ({
   weightAmKg: record.weightAmKg,
   weightPmKg: record.weightPmKg,
   legacyWeightKg: record.legacyWeightKg,
+  // 恢复类字段：报告摘要要用（趋势聚合本身不看它们）
+  sleepHours: record.sleepHours,
+  energy: record.energy,
+  soreness: record.soreness,
   intake: factsOf(toIntakeEntries(record).map((entry) => entry.computed)),
   hasIntakeRows: record.intake.length > 0,
   workouts: toWorkoutEntries(record)
@@ -134,6 +138,82 @@ describe('覆盖率门禁（FR-708）', () => {
 })
 
 describe('摘要里不放原始记录', () => {
+  it('恢复类：睡眠 / 精力 / 酸痛按天聚合，且每个指标都带「有记录天数」（自报数据稀疏）', () => {
+    const sleeps = records.map((record) => record.sleepHours).filter((value): value is number => typeof value === 'number')
+    const energies = records.map((record) => record.energy).filter((value): value is number => typeof value === 'number')
+    const soreness = records.map((record) => record.soreness).filter((value): value is number => typeof value === 'number')
+
+    expect(digest.recovery.sleepDays).toBe(sleeps.length)
+    expect(digest.recovery.avgSleepHours).toBeCloseTo(sleeps.reduce((sum, value) => sum + value, 0) / sleeps.length, 1)
+    expect(digest.recovery.shortSleepDays).toBe(sleeps.filter((value) => value < 6).length)
+    expect(digest.recovery.ratedDays).toBe(energies.length)
+    expect(digest.recovery.lowEnergyDays).toBe(energies.filter((value) => value <= 2).length)
+    expect(digest.recovery.highSorenessDays).toBe(soreness.filter((value) => value >= 4).length)
+    // fixtures 里刻意留了短睡与高酸痛各至少一天，否则这些口径等于没测
+    expect(digest.recovery.shortSleepDays).toBeGreaterThan(0)
+    expect(digest.recovery.highSorenessDays).toBeGreaterThan(0)
+  })
+
+  it('完全没有恢复数据时留空，不补 0（模型不该把「没记录」当成「睡了 0 小时」）', () => {
+    const blank = buildReportDigest({
+      period,
+      days: days.map((day) => ({ ...day, sleepHours: undefined, energy: undefined, soreness: undefined })),
+      targets
+    })
+    expect(blank.recovery.sleepDays).toBe(0)
+    expect(blank.recovery.avgSleepHours).toBeUndefined()
+    expect(blank.recovery.shortSleepDays).toBeUndefined()
+    expect(blank.recovery.ratedDays).toBe(0)
+  })
+
+  it('训练强度：RPE 与有氧消耗进摘要（容量负荷说明「练了多少」，RPE 说明「有多吃力」）', () => {
+    const rpes = records
+      .flatMap((record) => record.training.map((row) => row.rpe))
+      .filter((value): value is number => typeof value === 'number')
+    expect(digest.training.rpeAvg).toBeCloseTo(rpes.reduce((sum, value) => sum + value, 0) / rpes.length, 1)
+    expect(digest.training.highRpeEntries).toBe(rpes.filter((value) => value >= 8).length)
+    expect(digest.training.highRpeEntries).toBeGreaterThan(0)
+    expect(digest.training.burnKcal).toBeCloseTo(trend.training.aggregate.burn, 1)
+  })
+
+  it('饮食结构：钠按上限口径数「超标天数」，纤维按目标口径数「达标天数」，与缺口提示同一套判定', () => {
+    const perDay = records
+      .filter((record) => record.intake.length > 0)
+      .map((record) => factsOf(toIntakeEntries(record).map((entry) => entry.computed)))
+    const avgSodium = perDay.reduce((sum, item) => sum + item.sodiumMg, 0) / perDay.length
+    const avgFiber = perDay.reduce((sum, item) => sum + item.fiberG, 0) / perDay.length
+
+    expect(digest.intake.avgSodiumMg).toBeCloseTo(avgSodium, 1)
+    expect(digest.intake.sodiumMaxMg).toBe(targets.sodiumMaxMg)
+    expect(digest.intake.sodiumOverDays).toBe(perDay.filter((item) => item.sodiumMg > targets.sodiumMaxMg).length)
+    expect(digest.intake.avgFiberG).toBeCloseTo(avgFiber, 1)
+    expect(digest.intake.fiberTargetG).toBe(targets.fiberTargetG)
+    expect(digest.intake.fiberHitDays).toBe(perDay.filter((item) => item.fiberG >= targets.fiberTargetG).length)
+  })
+
+  it('上一期的数字原样带上（给了才能做可核对的环比）', () => {
+    const withNumbers = buildReportDigest({
+      period,
+      days,
+      targets,
+      previous: {
+        period: '2026-W40',
+        conclusion: '上期结论',
+        numbers: {
+          avgKcal: 1900,
+          recordedDays: 5,
+          kcalHitDays: 1,
+          proteinHitDays: 2,
+          trainingDays: 2,
+          volumeLoadKg: 800,
+          weightChangeKg: -0.3
+        }
+      }
+    })
+    expect(withNumbers.previousDigest?.numbers?.avgKcal).toBe(1900)
+    expect(withNumbers.previousDigest?.numbers?.trainingDays).toBe(2)
+  })
+
   it('序列化后不含备注原文、菜品名与食材名', () => {
     const text = JSON.stringify(digest)
     for (const record of records) {

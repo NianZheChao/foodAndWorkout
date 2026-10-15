@@ -187,7 +187,13 @@ describe('响应式对象写入 IndexedDB', () => {
             proteinTargetG: 150,
             kcalHitDays: 0,
             proteinHitDays: 0,
-            recordedDays: 2
+            recordedDays: 2,
+            avgSodiumMg: 1900,
+            sodiumMaxMg: 2300,
+            sodiumOverDays: 0,
+            avgFiberG: 16,
+            fiberTargetG: 30,
+            fiberHitDays: 0
           },
           weight: reactive({ amSeries: reactive([{ date: DATE, kg: 75.1 }]) }),
           training: {
@@ -197,8 +203,10 @@ describe('响应式对象写入 IndexedDB', () => {
             volumeLoadKg: 384,
             byMuscle: reactive([{ muscle: '胸', sets: 3 }]),
             targetDays: 3,
-            targetSetsPerMuscle: 10
+            targetSetsPerMuscle: 10,
+            burnKcal: 295
           },
+          recovery: reactive({ sleepDays: 2, avgSleepHours: 7, ratedDays: 2 }),
           currentTargets: { kcalTarget: 2240, proteinTargetG: 150 }
         }),
         content: null,

@@ -41,7 +41,13 @@ const digest: ReportDigest = {
     proteinTargetG: 150,
     kcalHitDays: 0,
     proteinHitDays: 0,
-    recordedDays: 4
+    recordedDays: 4,
+    avgSodiumMg: 1800,
+    sodiumMaxMg: 2300,
+    sodiumOverDays: 0,
+    avgFiberG: 18,
+    fiberTargetG: 30,
+    fiberHitDays: 1
   },
   weight: { amSeries: [{ date: '2026-10-13', kg: 75.1 }], ma7: 75.4, changeKg: -0.5, changePctPerWeek: -2.3 },
   training: {
@@ -51,8 +57,12 @@ const digest: ReportDigest = {
     volumeLoadKg: 180,
     byMuscle: [{ muscle: '二头', sets: 6 }],
     targetDays: 3,
-    targetSetsPerMuscle: 10
+    targetSetsPerMuscle: 10,
+    rpeAvg: 7,
+    highRpeEntries: 0,
+    burnKcal: 295
   },
+  recovery: { sleepDays: 4, avgSleepHours: 7, shortSleepDays: 1, ratedDays: 3, lowEnergyDays: 1, highSorenessDays: 0 },
   currentTargets: { kcalTarget: 2240, proteinTargetG: 150, lastCalibrated: '2026-10-10' }
 }
 
