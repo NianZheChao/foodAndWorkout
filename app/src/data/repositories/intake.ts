@@ -12,6 +12,12 @@ export async function listIntakeByDate(date: string): Promise<IntakeEntry[]> {
   return rows.sort((a, b) => order[a.meal] - order[b.meal])
 }
 
+/** 区间查询（趋势页 / 报告摘要用），按日期升序。 */
+export async function listIntakeInRange(start: string, end: string): Promise<IntakeEntry[]> {
+  const rows = await db.intake.where('date').between(start, end, true, true).toArray()
+  return rows.sort((a, b) => a.date.localeCompare(b.date))
+}
+
 export async function addIntake(entry: Omit<IntakeEntry, 'id'>): Promise<string> {
   const id = newId('in')
   await db.intake.put({ ...entry, id })

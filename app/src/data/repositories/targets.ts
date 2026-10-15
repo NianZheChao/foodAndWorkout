@@ -47,5 +47,6 @@ export async function applyCalibration(input: {
 
 export async function listCalibrations(): Promise<CalibrationRecord[]> {
   const rows = await db.calibrations.toArray()
-  return rows.sort((a, b) => b.date.localeCompare(a.date))
+  // 同一天可能有多行（例如首次估算后立刻又校准一次），用 createdAt 兜底，保证最新的一行在前
+  return rows.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt)
 }

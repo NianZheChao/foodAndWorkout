@@ -50,6 +50,9 @@ describe('页面挂载（阶段 1 已落地的路由）', () => {
     '/log/body',
     '/log/quick',
     '/summary',
+    '/trend',
+    '/targets',
+    '/profile',
     '/settings/model'
   ])(
     '%s 能挂载并渲染出页面标题',
