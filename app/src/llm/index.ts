@@ -12,13 +12,16 @@ import { parseJsonFromModel } from './text'
 import { outputLimitOf, type LlmTask } from './types'
 import { foodResolveTask } from './tasks/foodResolve'
 import { logParseTask } from './tasks/logParse'
+import { reportMonthlyTask, reportWeeklyTask } from './tasks/report'
 import { logLlmCall } from '@/data/repositories/llmLogs'
 import { getModelConfig, isModelConfigured, saveModelConfig } from '@/data/repositories/modelConfig'
 import type { ModelConfigRecord } from '@/domain/types'
 
 export const TASKS = {
   'food.resolve': foodResolveTask,
-  'log.parse': logParseTask
+  'log.parse': logParseTask,
+  'report.weekly': reportWeeklyTask,
+  'report.monthly': reportMonthlyTask
 } as const
 
 export type TaskId = keyof typeof TASKS

@@ -11,7 +11,13 @@ export const routes: RouteRecordRaw[] = [
   { path: '/log/:kind(diet|workout|body)?', name: 'log', component: () => import('@/pages/LogHubPage.vue'), meta: { title: '记录', spec: 'M1 FR-100 / M2 FR-200 / M3 FR-300' } },
   { path: '/summary/:date?', name: 'summary', component: () => import('@/pages/SummaryPage.vue'), meta: { title: '当日汇总', spec: 'M5 FR-500' } },
   { path: '/trend', name: 'trend', component: () => import('@/pages/TrendPage.vue'), meta: { title: '趋势', spec: 'M6 FR-600' } },
-  { path: '/reports', name: 'reports', component: Placeholder, meta: { title: '报告', spec: 'M7 FR-700' } },
+  { path: '/reports', name: 'reports', component: () => import('@/pages/ReportsPage.vue'), meta: { title: '报告', spec: 'M7 FR-700' } },
+  {
+    path: '/reports/:id',
+    name: 'report-detail',
+    component: () => import('@/pages/ReportDetailPage.vue'),
+    meta: { title: '报告详情', spec: 'M7 FR-700 / FR-710' }
+  },
   { path: '/foods', name: 'foods', component: Placeholder, meta: { title: '食物库', spec: 'M4 FR-400' } },
   { path: '/targets', name: 'targets', component: () => import('@/pages/TargetsPage.vue'), meta: { title: '目标', spec: 'M9 FR-900' } },
   { path: '/profile', name: 'profile', component: () => import('@/pages/ProfilePage.vue'), meta: { title: '档案', spec: 'M10 FR-1000' } },
