@@ -248,6 +248,16 @@ export interface TargetsRecord {
 }
 
 export interface ProfileRecord {
+  /**
+   * 只放**会被读**的字段：性别 / 年龄 / 身高 / 体重 / 目标 / 训练水平供首次目标估算使用
+   * （`domain/calibration.ts`）。
+   *
+   * 2026-10-16 删掉了 `injuries` / `allergies` / `dietType` / `dailyCookMinutes` /
+   * `budgetPerDayCny` / `seasonings` / `equipment` / `mutedFields`：前七项的唯一消费者是
+   * 「饮食与训练推荐」，而推荐功能已决定不做；`mutedFields` 与设置里的名单重复，
+   * 澄清引擎读的是 `SettingsRecord.mutedFields`，只保留设置里那一份。
+   * 老数据里残留这些键不影响读取（IndexedDB 允许多余字段）。
+   */
   id: 'current'
   name?: string
   sex: 'male' | 'female'
@@ -258,21 +268,10 @@ export interface ProfileRecord {
   goal: '减脂' | '增肌' | '重组'
   trainingLevel: '新手' | '中级' | '高级'
   trainingYears?: number
-  injuries?: string
-  allergies?: string
-  dietType?: string
-  dailyCookMinutes: number
-  budgetPerDayCny?: number
   wakeTime?: string
   sleepTime?: string
-  /** 调味料有无：{ 盐: true, 蚝油: false } */
-  seasonings: Record<string, boolean>
-  /** 可用器材 */
-  equipment: string[]
   /** 记录口径约定（长期），如「不记饮水」 */
   conventions: string[]
-  /** 不再追问的字段（M11 / FR-1103） */
-  mutedFields: string[]
   updatedAt: number
 }
 

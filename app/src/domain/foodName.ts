@@ -16,13 +16,6 @@ export function normalizeFoodName(raw: string): string {
 }
 
 /** 从名称中推断生熟状态；推断不出时返回 undefined（不臆造）。 */
-export function inferCookedState(name: string): '生' | '熟' | '市售' | undefined {
-  if (name.includes('市售')) return '市售'
-  if (name.includes('熟') || name.includes('水煮') || name.includes('煮')) return '熟'
-  if (name.includes('生')) return '生'
-  return undefined
-}
-
 /** 酒精类：热量主要来自乙醇（7 kcal/g），宏量反算会明显偏低。 */
 export function isAlcoholic(name: string): boolean {
   return /啤酒|白酒|红酒|黄酒|米酒|葡萄酒|清酒|威士忌|伏特加|朗姆|鸡尾酒|酒精/.test(name)

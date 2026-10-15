@@ -450,6 +450,8 @@ interface LlmTask<In, Out> {
 
 ### 6.5 契约三：`plan.training`
 
+> **2026-10-16 决定不做推荐功能**：本节与 §6.6 仅作历史记录，不实现。
+
 **输入**：今日缺口、近 14 天各肌群组数与最近训练时间、目标组数下限、可用器材、伤病约束、上次同动作的 `组x次x重量`。
 
 **输出**
@@ -469,6 +471,8 @@ interface LlmTask<In, Out> {
 **本地处理**：动作与器材需通过档案白名单校验（用到不存在的器材则剔除该动作并提示）；`weightKg` 与上次记录比对，超出 +10% 时提示确认（避免激进加重）。
 
 ### 6.6 契约四：`plan.meal`
+
+> **2026-10-16 决定不做推荐功能**：本节仅作历史记录，不实现。
 
 **输入**：剩余热量与蛋白、钠是否超上限、纤维缺口、忌口 / 过敏、调味料有无、可用器材、每餐可投入时间、食物库中与蛋白质相关的高频条目名（只给名称，不给全量数值）。
 
@@ -744,7 +748,6 @@ interface LlmTask<In, Out> {
 | `/foods` | 食物库 | 来源筛选、疑似重复提示 |
 | `/targets` | 目标 | 校准记录表 |
 | `/profile` | 档案 | |
-| `/plan` | 推荐与周计划 | |
 | `/settings` | 设置 | 提醒、单位、外观、不再追问 |
 | `/settings/model` | 模型设置 | URL / token / 连通性 / 用量 |
 | `/data` | 数据 | 导出、导入、快照、存储占用、队列 |
@@ -1039,7 +1042,7 @@ scripts/
 | T3.1 | `reportDigest`（本地摘要） | ✅ 2026-10-15：`domain/reportDigest.ts`，建在 `domain/trend.ts` 的区间聚合上；摘要不含原始记录（`tests/report-digest.spec.ts` 断言序列化后无食物名），与趋势逐项同源 |
 | T3.2 | `report.weekly` / `report.monthly` + 数字守卫 + 数值/文字分区渲染 | ✅ 2026-10-15：`llm/tasks/report.ts` + `domain/reportGuard.ts`；守卫只放行「摘要里的数 / 0-100% 百分比 / 天周组常量」，其余标「待核对」；`report-generate.spec.ts` 覆盖 |
 | T3.3 | 报告列表、历史版本、重新生成、人工编辑留痕 | ✅ 2026-10-15：`ReportsPage.vue` + `ReportDetailPage.vue`；重新生成新建记录、旧版本保留；人工编辑写 `editedByUser`，数值区不可编辑 |
-| T3.4 | `plan.training` / `plan.meal` + 本地复算 | 模型自报营养与本地不一致时以本地为准 |
+| T3.4 | ~~`plan.training` / `plan.meal` + 本地复算~~ | ❌ **2026-10-16 决定不做推荐功能**（连带 §6.5 / §6.6 只作历史记录，`/plan` 路由已删除，档案里与推荐相关的字段也已下线） |
 | T3.5 | `calibration.review` + 校准向导（幅度与频率门禁） | 超出 ±150 kcal 被拦下 |
 
 ### 阶段 4：数据治理与打磨（P1-P2）

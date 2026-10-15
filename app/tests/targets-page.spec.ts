@@ -26,14 +26,7 @@ const PROFILE: ProfileRecord = {
   weightKg: 75,
   goal: '减脂',
   trainingLevel: '新手',
-  injuries: '无',
-  allergies: '无',
-  dietType: '无特殊',
-  dailyCookMinutes: 30,
-  seasonings: {},
-  equipment: ['哑铃'],
   conventions: [],
-  mutedFields: [],
   updatedAt: Date.now()
 }
 

@@ -20,4 +20,4 @@ carb_target_g: 275
 weekly_training_days: 3
 weekly_sets_per_muscle: 10
 target_rate_kg_per_week: -0.36
-last_calibrated: 2026-10-15
+last_calibrated: <today>

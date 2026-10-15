@@ -8,10 +8,6 @@ export function todayIso(): string {
   return dayjs().format('YYYY-MM-DD')
 }
 
-export function isValidIsoDate(value: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) && dayjs(value, 'YYYY-MM-DD', true).isValid()
-}
-
 export function addDays(date: string, days: number): string {
   return dayjs(date).add(days, 'day').format('YYYY-MM-DD')
 }

@@ -26,10 +26,6 @@ export async function listOpenDrafts(date?: string): Promise<DraftRecord[]> {
     .sort((a, b) => b.createdAt - a.createdAt)
 }
 
-export async function countOpenDrafts(): Promise<number> {
-  return (await listOpenDrafts()).length
-}
-
 export async function deleteDraft(id: string): Promise<void> {
   await db.drafts.delete(id)
 }

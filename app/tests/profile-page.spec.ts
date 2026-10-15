@@ -14,6 +14,7 @@ import ProfilePage from '@/pages/ProfilePage.vue'
 import { routes } from '@/router'
 import { db } from '@/data/db'
 import { getProfile, saveProfile } from '@/data/repositories/profile'
+import { getSettings } from '@/data/repositories/settings'
 import type { ProfileRecord } from '@/domain/types'
 
 async function mountPage(): Promise<VueWrapper> {
@@ -59,16 +60,9 @@ const EXISTING: ProfileRecord = {
   weightKg: 75,
   goal: '减脂',
   trainingLevel: '新手',
-  injuries: '无',
-  allergies: '无',
-  dietType: '无特殊',
-  dailyCookMinutes: 30,
   wakeTime: '09:00',
   sleepTime: '01:00',
-  seasonings: { 盐: true },
-  equipment: ['哑铃'],
   conventions: ['不记录饮水'],
-  mutedFields: [],
   updatedAt: Date.now()
 }
 
@@ -88,18 +82,11 @@ describe('档案页', () => {
     expect(await getProfile()).toBeUndefined()
   })
 
-  it('保存时把性别 / 目标 / 忌口 / 器材 / 约定一起写进本机（FR-1001 / FR-1003 / FR-1004）', async () => {
+  it('保存时把性别 / 年龄 / 身高 / 体重 / 约定一起写进本机（FR-1001 / FR-1004）', async () => {
     const wrapper = await mountPage()
     await inputFor(wrapper, '年龄').setValue('30')
     await inputFor(wrapper, '身高(cm)').setValue('175')
     await inputFor(wrapper, '体重(kg)').setValue('75')
-    await inputFor(wrapper, '过敏原').setValue('花生')
-    await inputFor(wrapper, '每餐可做饭(分钟)').setValue('25')
-
-    // 器材是多选标签（ChipSelect），点一下选中、再点取消
-    const equipment = wrapper.findAll('.chip').filter((item) => item.text() === '哑铃')
-    expect(equipment).toHaveLength(1)
-    await equipment[0].trigger('click')
 
     await button(wrapper, '保存档案').trigger('click')
 
@@ -110,13 +97,10 @@ describe('档案页', () => {
     expect(saved.age).toBe(30)
     expect(saved.heightCm).toBe(175)
     expect(saved.weightKg).toBe(75)
-    expect(saved.allergies).toBe('花生')
-    expect(saved.dailyCookMinutes).toBe(25)
-    expect(saved.equipment).toEqual(['哑铃'])
     expect(saved.conventions.some((line) => line.includes('不记录饮水'))).toBe(true)
-    expect(saved.seasonings['盐']).toBe(false)
-    // 调味料表里每一项都要有明确的 true/false，推荐模块才知道「没有」
-    expect(Object.keys(saved.seasonings).length).toBeGreaterThan(5)
+    // 推荐相关的字段已经不在模型里了（2026-10-16 范围调整）
+    expect('equipment' in saved).toBe(false)
+    expect('seasonings' in saved).toBe(false)
   })
 
   it('已有档案时回填原值，改完再存不会丢字段', async () => {
@@ -125,14 +109,14 @@ describe('档案页', () => {
     expect((inputFor(wrapper, '身高(cm)').element as HTMLInputElement).value).toBe('175')
     expect((inputFor(wrapper, '起床时间').element as HTMLInputElement).value).toBe('09:00')
 
-    await inputFor(wrapper, '每餐可做饭(分钟)').setValue('40')
+    await inputFor(wrapper, '体重(kg)').setValue('74')
     await button(wrapper, '保存档案').trigger('click')
     await vi.waitFor(async () => {
-      expect((await getProfile())?.dailyCookMinutes).toBe(40)
+      expect((await getProfile())?.weightKg).toBe(74)
     })
     const saved = (await getProfile()) as ProfileRecord
-    expect(saved.equipment).toEqual(['哑铃'])
     expect(saved.wakeTime).toBe('09:00')
+    expect(saved.conventions).toContain('不记录饮水')
   })
 
   it('年龄 / 身高 / 体重的离谱输入被拦下，不写库（BR-16）', async () => {
@@ -146,5 +130,24 @@ describe('档案页', () => {
       expect(wrapper.text()).toContain('体重要填 25-300 kg')
     })
     expect(await getProfile()).toBeUndefined()
+  })
+
+  it('「不再追问」名单写进 settings（澄清引擎读的就是那儿），不是档案里那份死字段', async () => {
+    const wrapper = await mountPage()
+    await inputFor(wrapper, '年龄').setValue('30')
+    await inputFor(wrapper, '身高(cm)').setValue('175')
+    await inputFor(wrapper, '体重(kg)').setValue('75')
+
+    // 两个多行输入框：第一个是记录口径约定，第二个是「不再追问」
+    const areas = wrapper.findAll('textarea')
+    expect(areas.length).toBeGreaterThanOrEqual(2)
+    await areas[1].setValue('油.grams\n盐.grams')
+    await button(wrapper, '保存档案').trigger('click')
+
+    await vi.waitFor(async () => {
+      expect((await getSettings()).mutedFields).toEqual(['油.grams', '盐.grams'])
+    })
+    // 2026-10-16 前的 bug：名单写进了 profile.mutedFields，澄清引擎读的是 settings，于是输入框形同摆设
+    expect('mutedFields' in ((await getProfile()) as ProfileRecord)).toBe(false)
   })
 })

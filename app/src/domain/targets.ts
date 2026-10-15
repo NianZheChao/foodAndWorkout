@@ -6,7 +6,6 @@
  */
 
 import { NUTRIENT_LABELS, NUTRIENT_UNITS } from '@/domain/nutrition'
-import { fmtNumber, fmtPercent, fmtSigned } from '@/domain/format'
 import type { DaySummary, DaySummaryRow, NutritionFacts, TargetsRecord } from '@/domain/types'
 
 export type TargetValues = Pick<
@@ -49,16 +48,6 @@ export function buildSummaryRows(intake: NutritionFacts, targets: TargetValues):
       ratio: want ? got / want : 0
     }
   })
-}
-
-/** 与脚本一致：`≤` 前缀表示上限；无目标时四项都显示 `-`。 */
-export function formatSummaryRow(row: DaySummaryRow, mode: 'goal' | 'max' = 'goal'): string {
-  if (!row.target) return `| ${row.label} | ${fmtNumber(row.intake)} | - | - | - |`
-  const prefix = mode === 'max' ? '≤' : ''
-  return (
-    `| ${row.label} | ${fmtNumber(row.intake)} | ${prefix}${fmtNumber(row.target)} | ` +
-    `${fmtSigned(row.diff)} | ${row.ratio ? fmtPercent(row.ratio) : '-'} |`
-  )
 }
 
 /**

@@ -118,17 +118,13 @@ describe('响应式对象写入 IndexedDB', () => {
         weightKg: 75,
         goal: '减脂' as const,
         trainingLevel: '新手' as const,
-        dailyCookMinutes: 30,
-        seasonings: reactive({ 盐: true, 蚝油: false }),
-        equipment: reactive(['哑铃', '厨房秤']),
         conventions: reactive(['不记录饮水']),
-        mutedFields: reactive([]),
         updatedAt: Date.now()
       })
     )
     const profile = await getProfile()
-    expect(profile?.equipment).toEqual(['哑铃', '厨房秤'])
-    expect(isProxy(profile?.equipment)).toBe(false)
+    expect(profile?.conventions).toEqual(['不记录饮水'])
+    expect(isProxy(profile?.conventions)).toBe(false)
 
     await putTargets({
       tdeeKcal: 2633,

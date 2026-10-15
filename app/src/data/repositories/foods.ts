@@ -38,10 +38,6 @@ export async function searchFoods(query: string, limit = 20): Promise<Food[]> {
     .slice(0, limit)
 }
 
-export async function getFood(id: string): Promise<Food | undefined> {
-  return db.foods.get(id)
-}
-
 export async function findByNormalizedName(name: string): Promise<Food | undefined> {
   const norm = normalizeFoodName(name)
   const hits = await db.foods.where('nameNorm').equals(norm).toArray()

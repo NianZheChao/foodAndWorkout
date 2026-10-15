@@ -4,7 +4,7 @@
  * 所有确定性计算都在本地完成，绝不交给模型（DR-45 / FR-1410）。
  */
 
-import type { Food, FoodSnapshot, NutritionFacts } from '@/domain/types'
+import type { Food, NutritionFacts } from '@/domain/types'
 
 export const NUTRIENT_KEYS = ['kcal', 'proteinG', 'fatG', 'carbG', 'fiberG', 'sodiumMg'] as const
 export type NutrientKey = (typeof NUTRIENT_KEYS)[number]
@@ -68,10 +68,6 @@ export function factsForGrams(
 }
 
 /** 由快照 + 克数换算（历史记录固定用快照，避免食物库改动污染旧数据）。 */
-export function factsForSnapshot(snapshot: FoodSnapshot, grams: number): NutritionFacts {
-  return factsForGrams(snapshot, grams)
-}
-
 export function sumFacts(list: readonly NutritionFacts[]): NutritionFacts {
   const total = emptyFacts()
   for (const item of list) {

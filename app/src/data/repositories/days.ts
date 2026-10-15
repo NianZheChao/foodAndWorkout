@@ -39,7 +39,3 @@ export async function listDaysInRange(start: string, end: string): Promise<DayRe
   return db.days.where('date').between(start, end, true, true).toArray()
 }
 
-export async function listRecentDays(limit: number, end: string): Promise<DayRecord[]> {
-  const all = await db.days.orderBy('date').reverse().limit(limit).toArray()
-  return all.filter((d) => d.date <= end).sort((a, b) => a.date.localeCompare(b.date))
-}

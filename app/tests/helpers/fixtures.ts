@@ -7,7 +7,6 @@
  */
 
 import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import {
   parseRecord,
   parseTables,
@@ -20,8 +19,6 @@ import {
 } from '@/io/markdown/record'
 import { parseSetVolume } from '@/domain/training'
 import type { IntakeEntry, NutritionFacts, TargetsRecord, WorkoutEntry, WorkoutSet } from '@/domain/types'
-
-const FIXTURE_DIR = fileURLToPath(new URL('../fixtures/', import.meta.url))
 
 export const TEXT_TOLERANCE = 0.051
 
@@ -180,4 +177,3 @@ export function factsOf(list: readonly NutritionFacts[]): NutritionFacts {
   )
 }
 
-export const FIXTURE_DIR_PATH = FIXTURE_DIR

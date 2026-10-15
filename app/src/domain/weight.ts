@@ -35,10 +35,6 @@ export function morningWeight(day: WeightLike): number | undefined {
   return isPlausibleWeight(day.weightAmKg) ? day.weightAmKg : undefined
 }
 
-export function eveningWeight(day: WeightLike): number | undefined {
-  return isPlausibleWeight(day.weightPmKg) ? day.weightPmKg : undefined
-}
-
 /** 夜间净流失 = 当天晨重 − 前一天睡前重；缺一即留空（DR-08）。 */
 export function overnightLoss(
   morningKg: number | null | undefined,

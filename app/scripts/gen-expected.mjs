@@ -51,6 +51,15 @@ function resolveLauncher() {
 const LAUNCHER = resolveLauncher()
 
 /**
+ * `init` 会输出 `last_calibrated: <今天>`，日期每天都在变 —— 直接落盘会让这份期望值
+ * 「每天一次假变更」，谁跑一次 `npm run expected` 都会看到脏文件（2026-10-16 撞上）。
+ * 没有任何断言依赖这行的具体日期，所以统一写成占位符，期望值只随**真实口径变化**而变。
+ */
+function stabilize(text) {
+  return text.replace(/^last_calibrated: \d{4}-\d{2}-\d{2}$/m, 'last_calibrated: <today>')
+}
+
+/**
  * 把脚本与 fixtures 组装成一个临时工作区。
  *
  * `nutrition.py` 是按自身位置找 `records/` `targets.md` `profile.md` `data/foods.csv` 的，
@@ -97,7 +106,7 @@ mkdirSync(OUT_DIR, { recursive: true })
 try {
   for (const [name, args] of CASES) {
     const stdout = runNutrition(args, TEMP_WORKSPACE)
-    const text = stdout.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n*$/, '\n')
+    const text = stabilize(stdout.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n*$/, '\n'))
     writeFileSync(join(OUT_DIR, name), text, { encoding: 'utf8' })
     process.stdout.write(`已生成 ${name}（${args.join(' ')}）\n`)
   }

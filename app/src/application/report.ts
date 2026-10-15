@@ -192,8 +192,3 @@ export async function saveEditedContent(
   return next
 }
 
-/** 上一期报告（用于「与上一期对比」与重新生成时的对比文本）。 */
-export async function previousReportOf(type: ReportType, before: string): Promise<ReportRecord | undefined> {
-  const rows = await listReports(type)
-  return rows.find((row) => row.periodStart < before && row.content)
-}
