@@ -61,9 +61,9 @@ function button(wrapper: VueWrapper, label: string) {
 /** 造最近 3 天的体重；`intakeDays` 决定其中几天有饮食记录（用于调覆盖率）。 */
 async function seedDays(intakeDays = 2): Promise<void> {
   const rows: [number, number, number | undefined][] = [
-    [-3, 86, intakeDays >= 1 ? 1800 : undefined],
-    [-2, 85.6, intakeDays >= 2 ? 1600 : undefined],
-    [-1, 85.2, undefined]
+    [-3, 71, intakeDays >= 1 ? 1800 : undefined],
+    [-2, 70.6, intakeDays >= 2 ? 1600 : undefined],
+    [-1, 70.2, undefined]
   ]
   for (const [offset, weight, kcal] of rows) {
     const date = addDays(TODAY, offset)
@@ -110,13 +110,13 @@ beforeEach(async () => {
   await db.open()
   await Promise.all(db.tables.map((table) => table.clear()))
   await putTargets({
-    tdeeKcal: 2846,
-    kcalTarget: 2420,
-    proteinTargetG: 176,
+    tdeeKcal: 2633,
+    kcalTarget: 2100,
+    proteinTargetG: 140,
     fatTargetG: 70,
     carbTargetG: 270,
     fiberTargetG: 30,
-    sodiumMaxMg: 2300,
+    sodiumMaxMg: 2000,
     weeklyTrainingDays: 3,
     weeklySetsPerMuscle: 10,
     targetWeightKg: 65,

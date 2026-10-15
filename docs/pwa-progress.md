@@ -6,7 +6,7 @@
 - 最后更新：2026-10-15
 - 应用版本：`0.1.0`（`app/package.json`）
 - 分支 / 最近提交：`main` / `5797bc2 feat: 报告摘要 + 周报月报 + 数字守卫 + 报告页（T3.1-T3.3）`
-- 质量基线（2026-10-15 实测）：`npm test` 31 文件 / 287 项（**有 1 个偶发失败的用例，7 次重跑里出现 3 次，见 §8**）；`npm run build`（含 `vue-tsc -b` 类型检查）通过
+- 质量基线（2026-10-15 实测）：`npm test` 31 文件 / 289 项（**有 1 个偶发失败的用例，7 次重跑里出现 3 次，见 §8**）；`npm run build`（含 `vue-tsc -b` 类型检查）通过
 
 ## 0. 三十秒速览
 
@@ -29,8 +29,8 @@
 | `docs/pwa-requirements.md` | 想知道「为什么要这么做」：产品范围、领域口径、功能需求编号 `FR-xxxx` |
 | `docs/pwa-design.md` | 动手前必读：架构、数据层、LLM 契约、界面设计；**§13 是任务清单的权威来源** |
 | `app/README.md` | 本地跑起来的命令、与 `scripts/nutrition.py` 对拍的原理 |
-| `README.md`（仓库根） | 原工作区的 Markdown 格式契约 —— 阶段 4 的导入导出必须兼容它 |
-| `AGENTS.md` | 仓库硬性约束（不写绝对路径、`records/` 是唯一事实来源等） |
+| `README.md`（仓库根） | 仓库里有什么、怎么部署分发、对拍质量手段 |
+| `AGENTS.md` | 仓库硬性约束（不写绝对路径、**仓库不含个人数据**、口径变更要重跑对拍等） |
 
 ## 2. 已完成且可验收
 
@@ -199,6 +199,31 @@
   `report-generate.spec.ts`（8 项，含「模型失败也留数值区」「重生成不动旧版本」）、
   `report-pages.spec.ts`（7 项，覆盖未配模型、样本不足、编辑留痕、重生成）。
 
+### 2.8 仓库转型为纯 app 仓库（2026-10-15）
+
+**这一步只动仓库内容，没有动应用代码的任何口径。**
+
+- **删掉的工作区文件**：`records/`（5 天真实记录）、`profile.md`、`targets.md`、
+  `reviews/2026-W41-review.md`、`plans/`、`templates/`、`skills/fatloss-*`、`install-skills.*`。
+  这些是「用 Codex 记减脂」那套工作流的文件，与这个 PWA 无关，且含个人数据。
+- **保留 `scripts/nutrition.py` 与 `data/foods.csv`**：前者是 `domain/` 的**验收基准**，
+  后者是食物库种子与脚本的共同数据源 —— 两者都是 app 的构建 / 验证依赖，不是使用者的私人文件。
+- **`app/tests/fixtures/` 换成合成数据**：5 天记录 + 档案 + 目标全部重写（75 kg 那位「合成使用者」），
+  但保留同样的结构边界：一天没称重、一天只有睡前重、一天训练、油盐单独成行；
+  期望值随之重生成，断言里的硬编码数值（BMR/TDEE/肌群组数/容量等）一并更新。
+- **`npm run expected` 改成自包含**：`app/scripts/gen-expected.mjs` 现在把
+  `scripts/nutrition.py` + `data/foods.csv` + fixtures 组装进一个**系统临时工作区**再跑脚本，
+  不再依赖仓库根的 `records/`、`profile.md`、`targets.md`。
+  （踩过的坑：一开始只把脚本复制进临时目录、调用时却写的仓库路径，结果 `__file__` 指回仓库根，
+  又读到了真实文件 —— 期望值看起来「没变」，其实是被静默忽略了。）
+- **`README.md` / `AGENTS.md` 重写成 app 版**：README 讲清仓库里有什么、怎么部署分发（HTTPS + 根路径 +
+  SPA 回退）与对拍质量手段；AGENTS.md 只留应用工程约束，并新增一条硬规矩：**仓库里不能出现真实记录、
+  档案与个人身份信息**。
+- **还没做的一件事**：**GitHub 上的历史提交里仍然有这些个人数据**（之前 push 过）。
+  文件删了不等于历史干净 —— 要彻底清除得重写历史（`git filter-repo` / BFG）再强推，
+  那一步需要使用者显式授权（见 §7 第 16 条）。动手前已在仓库外留了一份完整备份
+  （含 `.git` 历史）。
+
 ## 3. 部分完成：有明确缺口（优先补这些）
 
 | 编号 | 已实现 | 缺什么 | 建议落点 |
@@ -281,7 +306,7 @@ app/
 ```bash
 npm install
 npm run dev       # 本地开发服务器
-npm test          # 单元 / 对拍 / 组件测试（31 文件 / 287 项）
+npm test          # 单元 / 对拍 / 组件测试（31 文件 / 289 项）
 npm run build     # vue-tsc 类型检查 + 生产构建（产物 dist/）
 npm run preview   # 预览构建产物 —— 测 PWA 行为请用这个，不要用 dev
 npm run seed      # 从 ../data/foods.csv 重新生成内置食物库种子
@@ -310,9 +335,10 @@ npm run build
 3. **记录链路永不被模型阻塞**：未配模型 / 断网时也要能记，占位 + 排队，汇总标「不完整」。
 4. **改了 `app/src/domain/` 的口径，或改了 `io/markdown/` 的解析，必须重跑 `npm run expected`**，
    并同步更新 `docs/pwa-design.md` §5.2。期望值变了说明口径真的变了 —— 先确认那是想要的改动。
-5. **不写绝对路径**：与工作区一致，任何文件（代码、文档、测试）里都不出现绝对路径。
+5. **不写绝对路径**：任何文件（代码、文档、测试）里都不出现绝对路径。
 6. **文件 LF 行尾、无 BOM**：`.gitattributes` 要求 `*.md text eol=lf`；在 Windows 上写文件时注意别引入 BOM。
-7. **不改历史记录**：`records/` 是唯一事实来源，只增量补写；`app/tests/fixtures/` 下的记录是测试副本，可以随测试需要增删。
+7. **仓库不含个人数据**（2026-10-15 起）：`app/tests/fixtures/` 下的记录与档案必须是**合成数据**，
+   新增用例也从合成数据出发；真实记录、档案与目标只存在于使用者设备上，不进仓库、也不写进文档。
 8. **接口只支持 OpenAI 兼容**（`{baseUrl}/chat/completions`），不做自定义请求模板。
 9. **不做日历 / `.ics` 导出**（OQ-8 / TD-09），提醒只保留应用内提醒与本地通知能力探测。
 10. **新增页面要同步三处**：`app/src/router/index.ts` 的路由、`app/tests/pages.spec.ts` 的挂载冒烟清单、
@@ -328,6 +354,8 @@ npm run build
 15. **写库前把响应式对象拍平**：界面传进 `application/` 的对象可能是 Vue 的响应式代理，
     直接 `put` 会 `DataCloneError`（fake-indexeddb 与真机都会炸）。落库前深拷一份纯 JSON
     （`saveEditedContent` 就是这么做的）。
+16. **不要 `git push --force`**：包括重写历史这类操作，必须由使用者**显式授权**后再做，
+    并且动手前先在仓库外留一份完整备份（含 `.git`）。
 
 ## 8. 已知坑（踩过的，别再踩）
 

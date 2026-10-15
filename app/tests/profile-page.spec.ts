@@ -54,9 +54,9 @@ function textarea(wrapper: VueWrapper): HTMLTextAreaElement {
 const EXISTING: ProfileRecord = {
   id: 'current',
   sex: 'male',
-  age: 26,
-  heightCm: 173,
-  weightKg: 88,
+  age: 30,
+  heightCm: 175,
+  weightKg: 75,
   goal: '减脂',
   trainingLevel: '新手',
   injuries: '无',
@@ -90,9 +90,9 @@ describe('档案页', () => {
 
   it('保存时把性别 / 目标 / 忌口 / 器材 / 约定一起写进本机（FR-1001 / FR-1003 / FR-1004）', async () => {
     const wrapper = await mountPage()
-    await inputFor(wrapper, '年龄').setValue('26')
-    await inputFor(wrapper, '身高(cm)').setValue('173')
-    await inputFor(wrapper, '体重(kg)').setValue('88')
+    await inputFor(wrapper, '年龄').setValue('30')
+    await inputFor(wrapper, '身高(cm)').setValue('175')
+    await inputFor(wrapper, '体重(kg)').setValue('75')
     await inputFor(wrapper, '过敏原').setValue('花生')
     await inputFor(wrapper, '每餐可做饭(分钟)').setValue('25')
 
@@ -107,9 +107,9 @@ describe('档案页', () => {
       expect(await getProfile()).toBeDefined()
     })
     const saved = (await getProfile()) as ProfileRecord
-    expect(saved.age).toBe(26)
-    expect(saved.heightCm).toBe(173)
-    expect(saved.weightKg).toBe(88)
+    expect(saved.age).toBe(30)
+    expect(saved.heightCm).toBe(175)
+    expect(saved.weightKg).toBe(75)
     expect(saved.allergies).toBe('花生')
     expect(saved.dailyCookMinutes).toBe(25)
     expect(saved.equipment).toEqual(['哑铃'])
@@ -122,7 +122,7 @@ describe('档案页', () => {
   it('已有档案时回填原值，改完再存不会丢字段', async () => {
     await saveProfile(EXISTING)
     const wrapper = await mountPage()
-    expect((inputFor(wrapper, '身高(cm)').element as HTMLInputElement).value).toBe('173')
+    expect((inputFor(wrapper, '身高(cm)').element as HTMLInputElement).value).toBe('175')
     expect((inputFor(wrapper, '起床时间').element as HTMLInputElement).value).toBe('09:00')
 
     await inputFor(wrapper, '每餐可做饭(分钟)').setValue('40')
@@ -137,8 +137,8 @@ describe('档案页', () => {
 
   it('年龄 / 身高 / 体重的离谱输入被拦下，不写库（BR-16）', async () => {
     const wrapper = await mountPage()
-    await inputFor(wrapper, '年龄').setValue('26')
-    await inputFor(wrapper, '身高(cm)').setValue('173')
+    await inputFor(wrapper, '年龄').setValue('30')
+    await inputFor(wrapper, '身高(cm)').setValue('175')
     await inputFor(wrapper, '体重(kg)').setValue('500')
     await button(wrapper, '保存档案').trigger('click')
 

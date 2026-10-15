@@ -6,7 +6,7 @@
 - 需求文档：`docs/pwa-requirements.md`
 - 设计文档：`docs/pwa-design.md`
 - 开发进度与交接：`docs/pwa-progress.md`
-- 数据格式契约（工作区）：`README.md`
+- 记录文件格式契约：`docs/pwa-design.md` §7.2（导入 / 导出用同一套 front-matter 与表格列名）
 
 ## 快速开始
 
@@ -21,12 +21,15 @@ npm run build    # 类型检查 + 生产构建（产物在 dist/）
 npm run preview  # 预览构建产物
 ```
 
-## 与工作区脚本对拍（核心质量手段）
+## 与脚本对拍（核心质量手段）
 
 `../scripts/nutrition.py` 是计算口径的**验收基准**。`npm run expected` 会把脚本的输出
 （`totals` / `trend` / `tdee` / `init`，外加一份在系统临时目录里造的 21 天合成样本，用来覆盖
-真实记录喂不到的 TDEE 反推）写到 `tests/fixtures/expected-*.txt`；`npm test` 再拿同一批 fixture
+fixtures 喂不到的 TDEE 反推）写到 `tests/fixtures/expected-*.txt`；`npm test` 再拿同一批 fixture
 喂给 `io/markdown` + `domain/`，与期望值逐项比对。
+
+脚本与 `../data/foods.csv` 会被临时复制成一个**自包含的工作区**再运行，`tests/fixtures/` 下的
+记录与档案都是合成数据 —— 这个仓库里没有任何使用者的真实数据。
 
 因此：**改了 `src/domain/` 的口径，或改了记录文件格式的解析，就要重跑 `npm run expected`。**
 期望值变了说明口径真的变了——先确认那是想要的改动，再同步更新 `docs/pwa-design.md` §5.2。
@@ -66,7 +69,17 @@ scripts/        构建期脚本（种子、图标、对拍期望值）
 - 澄清引擎：问题按 `<条目>.<字段>` 去重、阻塞项（克数 / 时长 / 组次重量）优先、
   遵守「不再追问」名单；本地能折算的（如库里登记了「1个 = 50g」）直接填并写明假设。
 
-周报月报、推荐与校准向导、导入导出属于阶段 3–4，见设计文档 §13。
+## 已实现（阶段 3 · 报告）
+
+- 报告摘要（`domain/reportDigest.ts`）：周期 / 覆盖率 / 均值 / 达标天数 / 体重变化 / 训练聚合 /
+  当前目标 / TDEE，全部本地算，**不含任何原始记录**；它是喂给模型的全部输入。
+- 周报月报（`llm/tasks/report.ts` + `domain/reportGuard.ts`）：模型只写文字，
+  三道本地闸门把关 —— 数字守卫（正文数字必须在摘要里出现过）、校准幅度 ≤ ±150 kcal、
+  覆盖率 < 50% 不给校准建议。
+- 报告页（`/reports`、`/reports/:id`）：数值区（不可编辑）与文字区（可编辑并留痕）分区，
+  待核对数字就地高亮；没配模型也能先生成数值区，重新生成不覆盖旧版本。
+
+推荐周计划、校准向导、导入导出属于阶段 3.4–4，见设计文档 §13。
 
 ## 两条工程约定
 

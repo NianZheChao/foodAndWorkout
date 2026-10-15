@@ -29,29 +29,29 @@ describe('对拍 init：首次估算', () => {
     return found
   }
 
-  // 脚本的 init 只认记录里的旧字段 weight_kg；仓库现有记录都改用 weight_am_kg，
-  // 因此它退回了 profile.md 的 88 kg。这里显式传同样的体重，才能逐项对拍。
+  // 脚本的 init 只认记录里的旧字段 weight_kg；fixtures 里的记录都用 weight_am_kg，
+  // 因此它退回了 profile.md 的 75 kg。这里显式传同样的体重，才能逐项对拍。
   const targets = buildInitialTargets({
     profile: {
       sex: 'male',
-      age: 26,
-      heightCm: 173,
+      age: 30,
+      heightCm: 175,
       goal: '减脂',
       trainingLevel: '新手'
     },
-    weightKg: 88,
+    weightKg: 75,
     weeklyTrainingDays: 3
   })
 
   it('输入取自 profile.md / targets.md 的 front-matter', () => {
     expect(profile.sex).toBe('male')
-    expect(profile.age).toBe('26')
-    expect(profile.height_cm).toBe('173')
-    expect(loadTargetsFixture().kcalTarget).toBe(2420)
+    expect(profile.age).toBe('30')
+    expect(profile.height_cm).toBe('175')
+    expect(loadTargetsFixture().kcalTarget).toBe(2240)
   })
 
   it('BMR / TDEE / 活动系数与脚本一致', () => {
-    expect(mifflinStJeorBmr({ sex: 'male', weightKg: 88, heightCm: 173, age: 26 })).toBeCloseTo(1836.25, 6)
+    expect(mifflinStJeorBmr({ sex: 'male', weightKg: 75, heightCm: 175, age: 30 })).toBeCloseTo(1698.75, 6)
     expectClose(targets.bmr, numberOf(table, row('基础代谢'), '数值'), 'BMR')
     expectClose(targets.tdeeKcal, numberOf(table, row('TDEE'), '数值'), 'TDEE')
     expectClose(targets.tdeeKcal / targets.bmr, numberOf(table, row('活动系数'), '数值'), '活动系数')
@@ -62,22 +62,22 @@ describe('对拍 init：首次估算', () => {
     expectClose(targets.proteinTargetG, numberOf(table, row('蛋白质'), '数值'), '蛋白质')
     expectClose(targets.fatTargetG, numberOf(table, row('脂肪'), '数值'), '脂肪')
     expectClose(targets.carbTargetG, numberOf(table, row('碳水'), '数值'), '碳水')
-    expect(targets.kcalTarget).toBe(2420)
-    expect(targets.proteinTargetG).toBe(176)
-    expect(targets.fatTargetG).toBe(70)
-    expect(targets.carbTargetG).toBe(270)
+    expect(targets.kcalTarget).toBe(2240)
+    expect(targets.proteinTargetG).toBe(150)
+    expect(targets.fatTargetG).toBe(60)
+    expect(targets.carbTargetG).toBe(275)
   })
 
   it('阶段、目标速率与训练参数与脚本一致', () => {
     expect(targets.phase).toBe('减脂')
     expectClose(targets.targetRateKgPerWeek, numberOf(table, row('目标速率'), '数值'), '目标速率')
-    expect(targets.targetRateKgPerWeek).toBeCloseTo(-0.39, 2)
+    expect(targets.targetRateKgPerWeek).toBeCloseTo(-0.36, 2)
     expect(targets.weeklyTrainingDays).toBe(3)
     expect(targets.weeklySetsPerMuscle).toBe(10)
   })
 
   it('front-matter 建议值与脚本一致', () => {
-    expect(Math.round(targets.tdeeKcal)).toBe(2846)
+    expect(Math.round(targets.tdeeKcal)).toBe(2633)
   })
 })
 
@@ -126,13 +126,15 @@ describe('python round 语义', () => {
 
 describe('校准门禁', () => {
   it('幅度在 ±150 kcal 内直接采纳', () => {
-    const proposal = proposeCalibration(2900, 2420, -0.4)
+    // 实测 TDEE 2540 +（速率 -0.4 → -440 kcal/天）= 2100，正好等于当前目标
+    const proposal = proposeCalibration(2540, 2100, -0.4)
     expect(proposal.clamped).toBe(false)
+    expect(proposal.kcalTarget).toBe(2100)
     expect(proposal.deltaKcal).toBeLessThanOrEqual(MAX_CALIBRATION_KCAL)
   })
 
   it('单次调整超过上限时被拦下并说明', () => {
-    const proposal = proposeCalibration(3600, 2420, -0.1)
+    const proposal = proposeCalibration(3600, 2100, -0.1)
     expect(proposal.clamped).toBe(true)
     expect(Math.abs(proposal.deltaKcal)).toBeLessThanOrEqual(MAX_CALIBRATION_KCAL)
     expect(proposal.note).toContain(`±${MAX_CALIBRATION_KCAL}`)
@@ -146,13 +148,13 @@ describe('校准门禁', () => {
 describe('首次估算用哪个体重', () => {
   it('优先最近一次真实称重，其次 profile.md', () => {
     expect(
-      resolveSeedWeight([{ date: '2026-10-11', weightAmKg: 85.8 }, { date: '2026-10-13', weightAmKg: 85 }], 88)
-    ).toEqual({ weightKg: 85, from: '最近记录 2026-10-13' })
-    expect(resolveSeedWeight([{ date: '2026-10-13', weightPmKg: 86 }], 88)).toEqual({
-      weightKg: 86,
+      resolveSeedWeight([{ date: '2026-10-11', weightAmKg: 70.8 }, { date: '2026-10-13', weightAmKg: 70 }], 73)
+    ).toEqual({ weightKg: 70, from: '最近记录 2026-10-13' })
+    expect(resolveSeedWeight([{ date: '2026-10-13', weightPmKg: 71 }], 73)).toEqual({
+      weightKg: 71,
       from: '最近记录 2026-10-13（睡前重）'
     })
-    expect(resolveSeedWeight([{ date: '2026-10-13' }], 88)).toEqual({ weightKg: 88, from: 'profile.md' })
+    expect(resolveSeedWeight([{ date: '2026-10-13' }], 73)).toEqual({ weightKg: 73, from: 'profile.md' })
     expect(resolveSeedWeight([], undefined)).toEqual({ from: '' })
   })
 })

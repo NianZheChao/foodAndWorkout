@@ -75,13 +75,13 @@ beforeEach(async () => {
   await db.open()
   await Promise.all(db.tables.map((table) => table.clear()))
   await putTargets({
-    tdeeKcal: 2846,
-    kcalTarget: 2420,
-    proteinTargetG: 176,
+    tdeeKcal: 2633,
+    kcalTarget: 2100,
+    proteinTargetG: 140,
     fatTargetG: 70,
     carbTargetG: 270,
     fiberTargetG: 30,
-    sodiumMaxMg: 2300,
+    sodiumMaxMg: 2000,
     weeklyTrainingDays: 3,
     weeklySetsPerMuscle: 10,
     targetWeightKg: 65,
@@ -92,10 +92,10 @@ beforeEach(async () => {
 
 describe('生成报告', () => {
   it('数值区来自本地聚合，文字区来自模型，并记下模型与契约版本', async () => {
-    await seedDay('2026-10-12', 86, 1800)
-    await seedDay('2026-10-13', 85.6, 1600)
-    await seedDay('2026-10-14', 85.2)
-    await seedDay('2026-10-15', 85)
+    await seedDay('2026-10-12', 71, 1800)
+    await seedDay('2026-10-13', 70.6, 1600)
+    await seedDay('2026-10-14', 70.2)
+    await seedDay('2026-10-15', 70)
 
     const { fetchImpl, calls } = stubFetch([chatOk(reportJson())])
     const outcome = await generateReport({ type: 'weekly', endDate: END }, { ...run, deps: { fetchImpl } })
@@ -118,7 +118,7 @@ describe('生成报告', () => {
   })
 
   it('模型失败也留下数值区：状态 pending，可以稍后重新生成', async () => {
-    await seedDay('2026-10-12', 86, 1800)
+    await seedDay('2026-10-12', 71, 1800)
     const { fetchImpl } = stubFetch([new Error('offline'), new Error('offline')])
     const outcome = await generateReport({ type: 'weekly', endDate: END }, { ...run, deps: { fetchImpl } })
 
@@ -132,7 +132,7 @@ describe('生成报告', () => {
   })
 
   it('样本不足时提示覆盖率，并把校准建议降级（FR-707 / FR-708）', async () => {
-    await seedDay('2026-10-12', 86, 1800)
+    await seedDay('2026-10-12', 71, 1800)
     const { fetchImpl } = stubFetch([
       chatOk(reportJson({ calibration: { recommended: true, deltaKcal: -100, rationale: '实测偏高' } }))
     ])
@@ -144,8 +144,8 @@ describe('生成报告', () => {
   })
 
   it('幅度超限的校准建议降级并说明（FR-904）', async () => {
-    await seedDay('2026-10-12', 86, 1800)
-    await seedDay('2026-10-13', 85.6, 1600)
+    await seedDay('2026-10-12', 71, 1800)
+    await seedDay('2026-10-13', 70.6, 1600)
     const { fetchImpl } = stubFetch([
       chatOk(reportJson({ calibration: { recommended: true, deltaKcal: -400, rationale: '实测偏高' } }))
     ])
@@ -156,8 +156,8 @@ describe('生成报告', () => {
   })
 
   it('编造的数字被标出来存进报告（DR-37）', async () => {
-    await seedDay('2026-10-12', 86, 1800)
-    await seedDay('2026-10-13', 85.6, 1600)
+    await seedDay('2026-10-12', 71, 1800)
+    await seedDay('2026-10-13', 70.6, 1600)
     const { fetchImpl } = stubFetch([
       chatOk(
         reportJson({
@@ -174,7 +174,7 @@ describe('生成报告', () => {
   })
 
   it('缺少 kind 的不合规输出会重试一次，仍失败就不落库', async () => {
-    await seedDay('2026-10-12', 86, 1800)
+    await seedDay('2026-10-12', 71, 1800)
     const bad = JSON.stringify({
       summary: 'x',
       training: { assessment: 'x', notes: [] },
@@ -197,8 +197,8 @@ describe('生成报告', () => {
 
 describe('报告版本与人工编辑（FR-710 / T3.3）', () => {
   async function generateOnce(): Promise<string> {
-    await seedDay('2026-10-12', 86, 1800)
-    await seedDay('2026-10-13', 85.6, 1600)
+    await seedDay('2026-10-12', 71, 1800)
+    await seedDay('2026-10-13', 70.6, 1600)
     const { fetchImpl } = stubFetch([chatOk(reportJson())])
     const outcome = await generateReport({ type: 'weekly', endDate: END }, { ...run, deps: { fetchImpl } })
     if (!outcome.report) throw new Error('没有生成报告')

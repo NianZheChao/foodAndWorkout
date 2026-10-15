@@ -186,27 +186,27 @@ describe('设置与目标', () => {
 
   it('校准同时写入校准记录与目标值（DR-32）', async () => {
     await putTargets({
-      tdeeKcal: 2846,
-      kcalTarget: 2420,
-      proteinTargetG: 176,
+      tdeeKcal: 2633,
+      kcalTarget: 2100,
+      proteinTargetG: 140,
       fatTargetG: 70,
       carbTargetG: 270,
       fiberTargetG: 30,
-      sodiumMaxMg: 2300,
+      sodiumMaxMg: 2000,
       weeklyTrainingDays: 3,
       weeklySetsPerMuscle: 10,
       targetWeightKg: 65,
       targetRateKgPerWeek: -0.39,
       reviewCadence: 'weekly'
     })
-    await applyCalibration({ date: '2026-11-01', measuredTdee: 2700, kcalAfter: 2300, basis: '14 天反推' })
+    await applyCalibration({ date: '2026-11-01', measuredTdee: 2500, kcalAfter: 2000, basis: '14 天反推' })
 
     const targets = await getTargets()
-    expect(targets?.kcalTarget).toBe(2300)
+    expect(targets?.kcalTarget).toBe(2000)
     expect(targets?.lastCalibrated).toBe('2026-11-01')
     const rows = await appDb.calibrations.toArray()
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ kcalBefore: 2420, kcalAfter: 2300, measuredTdee: 2700 })
+    expect(rows[0]).toMatchObject({ kcalBefore: 2100, kcalAfter: 2000, measuredTdee: 2500 })
   })
 
   it('未初始化目标时禁止局部更新（必须先跑首次引导）', async () => {

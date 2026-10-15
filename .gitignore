@@ -15,5 +15,4 @@ desktop.ini
 *.local.md
 local/
 
-# 数据目录必须纳入同步，不要给它们加忽略规则：
-# records/ plans/ reviews/ data/ profile.md targets.md
+# 本仓库只放应用本体：`data/foods.csv` 是种子食物库与脚本的共同数据源，必须入库。

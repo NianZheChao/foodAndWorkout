@@ -30,14 +30,14 @@ const table = expectedTable(EXPECTED_FILE, ['摄入', '目标', '占比'])
 const rows = buildSummaryRows(intake, targets)
 
 describe('对拍 totals：汇总六项与占比', () => {
-  it('解析出的记录与脚本读到的一致（10-13 有 2 条摄入）', () => {
+  it('解析出的记录与脚本读到的一致（10-13 有 5 条摄入）', () => {
     expect(day.hasIntakeTable).toBe(true)
-    expect(day.intake).toHaveLength(2)
+    expect(day.intake).toHaveLength(5)
   })
 
   it('目标取自 targets.md 的 front-matter', () => {
-    expect(targets.kcalTarget).toBe(2420)
-    expect(targets.proteinTargetG).toBe(176)
+    expect(targets.kcalTarget).toBe(2240)
+    expect(targets.proteinTargetG).toBe(150)
     expect(targets.sodiumMaxMg).toBe(2300)
   })
 
@@ -70,7 +70,7 @@ describe('对拍 totals：缺口提示文案', () => {
   })
 
   it('体重与训练状态与记录文件一致', () => {
-    expect(day.weightAmKg).toBe(85)
+    expect(day.weightAmKg).toBe(75.1)
     expect(day.weightPmKg).toBeUndefined()
     expect(day.training).toHaveLength(0)
   })

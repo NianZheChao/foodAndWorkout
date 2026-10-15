@@ -77,6 +77,10 @@
 
 ### 2.3 与现有工作区的关系
 
+> 口径见 2026-10-15 的仓库转型：**本仓库只放 app**。原本的 `records/`、`plans/`、`reviews/`、
+> `profile.md`、`targets.md` 与 skills 已移出（个人数据不进仓库）；下面这张表说的是**格式契约**层面的
+> 关系 —— 使用者在别处维护的那套 Markdown 结构仍然是导入 / 导出的目标，字段与口径不变。
+
 | 现有资产 | 在新架构中的角色 |
 | --- | --- |
 | `data/foods.csv` | 构建期内联为初始食物库种子（114 条），首次启动写入 IndexedDB |
@@ -261,12 +265,14 @@ this.version(2).stores({ drafts: 'id, date, status' })   // 其余表沿用 v1
 
 `scripts/nutrition.py` 是**验收基准**（需求 §3.3）。做法：
 
-1. 测试 fixture：把仓库现有的 `records/2026-10-09.md` ~ `2026-10-13.md`、`profile.md`、`targets.md` 原样放进 `tests/fixtures/`。
-2. 用现有脚本产出期望值：`npm run expected`（`app/scripts/gen-expected.mjs`）。它调用
-   `scripts/nutrition.py` 生成 `expected-totals.txt` / `expected-trend.txt` / `expected-tdee.txt` /
-   `expected-init.txt`，并在**系统临时目录**里造 21 天合成记录跑一次 `tdee`，得到
-   `expected-tdee-synthetic.txt`（仓库真实记录只有 3 天同时有体重与摄入，`tdee` 只能给出「数据不足」，
-   覆盖不到反推算法本身）。
+1. 测试 fixture：`app/tests/fixtures/` 里的 `records/2026-10-09.md` ~ `2026-10-13.md`、`profile.md`、
+   `targets.md` 是**合成数据**（2026-10-15 起本仓库不含任何真实记录），覆盖同样的结构边界：
+   一天没称重、一天只有睡前重、一天训练、油盐单独成行。
+2. 用现有脚本产出期望值：`npm run expected`（`app/scripts/gen-expected.mjs`）。它把
+   `scripts/nutrition.py`、`data/foods.csv` 与 fixtures 组装进一个**系统临时工作区**再调用脚本，
+   生成 `expected-totals.txt` / `expected-trend.txt` / `expected-tdee.txt` / `expected-init.txt`；
+   另造 21 天合成记录跑一次 `tdee`，得到 `expected-tdee-synthetic.txt`
+   （fixtures 里只有 3 天同时有体重与摄入，`tdee` 只能给出「数据不足」，覆盖不到反推算法本身）。
 3. Vitest 中：导入 fixture → 跑 `io/markdown` 解析 → 跑 `domain/` 计算 → 与期望值**逐项比对**。
 4. 容差取 `0.051` 而不是设计初稿的 `0.05`：期望值来自脚本的**显示输出**（已按 1 位小数四舍五入），
    所以天然带有半个最低位的舍入误差。空值必须同为缺失，不允许「一边是 0 一边是 -」。
@@ -393,14 +399,14 @@ interface LlmTask<In, Out> {
 {
   "period": { "type": "weekly", "label": "2026-W41", "start": "2026-10-05", "end": "2026-10-11", "days": 7 },
   "coverage": { "daysWithIntake": 2, "daysWithWeight": 1, "ratio": 0.29 },
-  "intake": { "avgKcal": 2139.6, "target": 2420, "avgProteinG": 95.7, "proteinTargetG": 176,
+  "intake": { "avgKcal": 1893.6, "target": 2240, "avgProteinG": 88.7, "proteinTargetG": 150,
               "kcalHitDays": 0, "proteinHitDays": 0, "recordedDays": 2 },
-  "weight": { "amSeries": [{ "date": "2026-10-11", "kg": 85.8 }], "ma7": 85.8,
+  "weight": { "amSeries": [{ "date": "2026-10-11", "kg": 75.6 }], "ma7": 75.6,
               "changeKg": null, "changePctPerWeek": null },
   "training": { "days": 1, "minutes": 45, "sets": 12, "volumeLoadKg": 180,
                 "byMuscle": [{ "muscle": "二头", "sets": 6 }, { "muscle": "三头", "sets": 6 }],
                 "targetDays": 3, "targetSetsPerMuscle": 10 },
-  "currentTargets": { "kcalTarget": 2420, "proteinTargetG": 176, "lastCalibrated": "2026-10-10" },
+  "currentTargets": { "kcalTarget": 2240, "proteinTargetG": 150, "lastCalibrated": "2026-10-10" },
   "previousDigest": { "period": "2026-W40", "conclusion": "…（上一期结论文本，限 200 字）" }
 }
 ```

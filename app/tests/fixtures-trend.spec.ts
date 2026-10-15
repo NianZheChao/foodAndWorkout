@@ -125,7 +125,7 @@ describe('对拍 trend：区间小结', () => {
 
   it('最新 7 日均线与脚本一致', () => {
     const numbers = numbersIn(expectedLineContaining(EXPECTED_FILE, '- 最新'))
-    // 「最新 7 日均线：85.6 kg」里的 7 是窗口天数，数值在它后面
+    // 「最新 7 日均线：75.4 kg」里的 7 是窗口天数，数值在它后面
     expect(numbers[0]).toBe(7)
     expectClose(latestMovingAverage(series, 7) ?? NaN, numbers[1], '最新均线')
   })
@@ -181,11 +181,12 @@ describe('对拍 trend：区间小结', () => {
         muscleLoad[name] = (muscleLoad[name] ?? 0) + load
       }
     }
-    expect(muscles).toEqual({ 二头: 6, 三头: 6 })
-    expect(muscleLoad).toEqual({ 二头: 90, 三头: 90 })
+    expect(muscles).toEqual({ 胸: 3, 背: 3, 腿: 3, 核心: 3 })
+    // 自重动作（平板支撑）不计容量
+    expect(muscleLoad).toEqual({ 胸: 384, 背: 384, 腿: 384 })
     const line = expectedLineContaining(EXPECTED_FILE, '- 各肌群组数')
-    expect(line).toContain('二头 6 组（容量 90 kg）')
-    expect(line).toContain('三头 6 组（容量 90 kg）')
+    expect(line).toContain('胸 3 组（容量 384 kg）')
+    expect(line).toContain('核心 3 组')
   })
 })
 
@@ -202,7 +203,8 @@ describe('对拍 trend：训练明细（容量负荷）', () => {
       expect(numberOf(detail, row, '出现')).toBe(item.dates.length)
       expect(numberOf(detail, row, '组数')).toBe(item.sets)
       expect(cellOf(detail, row, '最近一次')).toBe(item.volume)
-      expectClose(item.load, numberOf(detail, row, '区间容量'), `${name}.区间容量`)
+      // 自重动作（平板支撑）脚本给的是 `-`，容量按 0 记
+      expectClose(item.load, numberOf(detail, row, '区间容量') ?? 0, `${name}.区间容量`)
     })
   })
 

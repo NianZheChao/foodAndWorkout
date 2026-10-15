@@ -113,12 +113,15 @@ describe('对拍 trend：区间小结', () => {
 
   it('各肌群组数与容量与脚本一致', () => {
     expect(trend.training.muscles.map((row) => [row.name, row.sets, row.load])).toEqual([
-      ['二头', 6, 90],
-      ['三头', 6, 90]
+      ['胸', 3, 384],
+      ['背', 3, 384],
+      ['腿', 3, 384],
+      ['核心', 3, 0]
     ])
     const line = expectedLineContaining(EXPECTED, '- 各肌群组数')
-    expect(line).toContain('二头 6 组（容量 90 kg）')
-    expect(line).toContain('三头 6 组（容量 90 kg）')
+    expect(line).toContain('胸 3 组（容量 384 kg）')
+    // 自重动作不计容量，脚本那行不给容量后缀
+    expect(line).toContain('核心 3 组')
   })
 
   it('区间不足 7 天时不外推周均（FR-606）', () => {
@@ -139,7 +142,8 @@ describe('对拍 trend：训练明细（容量负荷）', () => {
       expect(numberOf(detail, row, '出现')).toBe(item.dates.length)
       expect(numberOf(detail, row, '组数')).toBe(item.sets)
       expect(cellOf(detail, row, '最近一次')).toBe(item.volume)
-      expectClose(item.load, numberOf(detail, row, '区间容量'), `${name}.区间容量`)
+      // 自重动作（如平板支撑）脚本给的是 `-`，容量按 0 记
+      expectClose(item.load, numberOf(detail, row, '区间容量') ?? 0, `${name}.区间容量`)
     })
   })
 })
@@ -186,7 +190,7 @@ describe('对拍 trend：样本标注与空状态', () => {
   it('口径不明的旧字段体重只作兜底并单独标注（DR-10）', () => {
     const legacyDay: TrendDayInput = {
       date: '2026-10-14',
-      legacyWeightKg: 85,
+      legacyWeightKg: 70,
       intake: factsOf([]),
       hasIntakeRows: false,
       workouts: []

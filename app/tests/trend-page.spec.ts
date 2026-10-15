@@ -31,18 +31,18 @@ async function mountTrend(days: number | string = 7): Promise<{ wrapper: VueWrap
   return { wrapper, router }
 }
 
-/** 造 3 天数据：前天 86 kg、昨天 85.5 kg + 一餐、今天 85 kg。 */
+/** 造 3 天数据：前天 71 kg、昨天 70.5 kg + 一餐、今天 70 kg。 */
 async function seedDays(): Promise<void> {
   const today = todayIso()
   const yesterday = addDays(today, -1)
   const twoDaysAgo = addDays(today, -2)
 
   await ensureDay(twoDaysAgo)
-  await updateDay(twoDaysAgo, { weightAmKg: 86 })
+  await updateDay(twoDaysAgo, { weightAmKg: 71 })
   await ensureDay(yesterday)
-  await updateDay(yesterday, { weightAmKg: 85.5, weightPmKg: 86.2 })
+  await updateDay(yesterday, { weightAmKg: 70.5, weightPmKg: 71.2 })
   await ensureDay(today)
-  await updateDay(today, { weightAmKg: 85 })
+  await updateDay(today, { weightAmKg: 70 })
   await addIntake({
     date: yesterday,
     meal: '午餐',
@@ -67,13 +67,13 @@ beforeEach(async () => {
   await db.open()
   await Promise.all(db.tables.map((table) => table.clear()))
   await putTargets({
-    tdeeKcal: 2846,
-    kcalTarget: 2420,
-    proteinTargetG: 176,
+    tdeeKcal: 2633,
+    kcalTarget: 2100,
+    proteinTargetG: 140,
     fatTargetG: 70,
     carbTargetG: 270,
     fiberTargetG: 30,
-    sodiumMaxMg: 2300,
+    sodiumMaxMg: 2000,
     weeklyTrainingDays: 3,
     weeklySetsPerMuscle: 10,
     targetWeightKg: 65,
@@ -89,7 +89,7 @@ describe('趋势页', () => {
     const text = wrapper.text()
 
     expect(text).toContain('体重（晨重散点 + 7 日均线）')
-    expect(text).toContain('86 → 85 kg')
+    expect(text).toContain('71 → 70 kg')
     expect(text).toContain('-1 kg')
     expect(text).toContain('夜间净流失')
     expect(text).toContain('日均（1 天有记录）')
@@ -101,8 +101,8 @@ describe('趋势页', () => {
   it('睡前重只出现在逐日表里，不进均线（FR-601）', async () => {
     await seedDays()
     const { wrapper } = await mountTrend(7)
-    // 昨天睡前重 86.2 只出现在表格中；均线列里不出现该值
-    expect(wrapper.text()).toContain('86.2')
+    // 昨天睡前重 71.2 只出现在表格中；均线列里不出现该值
+    expect(wrapper.text()).toContain('71.2')
     const headers = wrapper.findAll('thead th').map((th) => th.text())
     expect(headers).toContain('睡前')
     expect(headers).toContain('均线')

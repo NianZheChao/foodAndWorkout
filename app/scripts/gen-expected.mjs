@@ -1,24 +1,30 @@
 #!/usr/bin/env node
 /**
- * 生成对拍期望值：调用工作区脚本 scripts/nutrition.py，把输出原样落到 tests/fixtures/。
+ * 生成对拍期望值：调用 `scripts/nutrition.py`，把输出原样落到 `tests/fixtures/`。
  *
- * 脚本是验收基准（docs/pwa-design.md §5.3）。改了 domain/ 的计算口径后，
- * 必须重跑本脚本再跑 `npm test`，让对拍测试重新校验。
+ * 脚本是验收基准（docs/pwa-design.md §5.3）。改了 `domain/` 的计算口径后，
+ * 必须重跑本脚本再跑 `npm test`。
+ *
+ * **自包含**：期望值由 `tests/fixtures/` 里那批合成记录生成 ——
+ * 本脚本把 `scripts/nutrition.py`、`data/foods.csv` 与 fixtures 组装成一个临时工作区再跑，
+ * 因此仓库里不需要任何真实记录、档案或目标文件（2026-10-15 起本仓库只放 app）。
  *
  * 用法：npm run expected
  */
 
 import { execFileSync } from 'node:child_process'
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const APP = resolve(HERE, '..')
-const WORKSPACE = resolve(APP, '..')
-const SCRIPT = join(WORKSPACE, 'scripts', 'nutrition.py')
+const REPO = resolve(APP, '..')
+const SCRIPT = join(REPO, 'scripts', 'nutrition.py')
+const FOODS_CSV = join(REPO, 'data', 'foods.csv')
 const OUT_DIR = join(APP, 'tests', 'fixtures')
+const FIXTURES = OUT_DIR
 
 const CASES = [
   ['expected-totals.txt', ['totals', '2026-10-13']],
@@ -45,15 +51,36 @@ function resolveLauncher() {
 const LAUNCHER = resolveLauncher()
 
 /**
+ * 把脚本与 fixtures 组装成一个临时工作区。
+ *
+ * `nutrition.py` 是按自身位置找 `records/` `targets.md` `profile.md` `data/foods.csv` 的，
+ * 所以这里复制成同样的目录结构；跑完即删，不落进仓库。
+ */
+function buildTempWorkspace() {
+  const root = mkdtempSync(join(tmpdir(), 'thin-muscle-expected-'))
+  mkdirSync(join(root, 'scripts'), { recursive: true })
+  mkdirSync(join(root, 'data'), { recursive: true })
+  copyFileSync(SCRIPT, join(root, 'scripts', 'nutrition.py'))
+  copyFileSync(FOODS_CSV, join(root, 'data', 'foods.csv'))
+  cpSync(join(FIXTURES, 'records'), join(root, 'records'), { recursive: true })
+  copyFileSync(join(FIXTURES, 'profile.md'), join(root, 'profile.md'))
+  copyFileSync(join(FIXTURES, 'targets.md'), join(root, 'targets.md'))
+  return root
+}
+
+/**
  * 运行脚本并返回 stdout。
  *
  * 脚本会用非零退出码表达「数据不足」这类业务结论（如 `tdee` 样本不够），
  * 那种情况下 stdout 仍是有意义的期望值，必须一并保留。
  */
-function runNutrition(args) {
+function runNutrition(args, cwd) {
+  // 必须调用**临时工作区里那份**脚本：它按自身位置找 records / profile / targets，
+  // 调用仓库里那份会让 __file__ 指回仓库根，又去读真实文件（2026-10-15 踩过）。
+  const script = join(cwd, 'scripts', 'nutrition.py')
   try {
-    return execFileSync(LAUNCHER[0], [...LAUNCHER.slice(1), SCRIPT, ...args], {
-      cwd: WORKSPACE,
+    return execFileSync(LAUNCHER[0], [...LAUNCHER.slice(1), script, ...args], {
+      cwd,
       encoding: 'utf8',
       maxBuffer: 16 * 1024 * 1024
     })
@@ -63,12 +90,19 @@ function runNutrition(args) {
   }
 }
 
+/** 期望值只在「跑脚本时用的那个临时工作区」里产生，跑完就删。 */
+const TEMP_WORKSPACE = buildTempWorkspace()
+
 mkdirSync(OUT_DIR, { recursive: true })
-for (const [name, args] of CASES) {
-  const stdout = runNutrition(args)
-  const text = stdout.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n*$/, '\n')
-  writeFileSync(join(OUT_DIR, name), text, { encoding: 'utf8' })
-  process.stdout.write(`已生成 ${name}（${args.join(' ')}）\n`)
+try {
+  for (const [name, args] of CASES) {
+    const stdout = runNutrition(args, TEMP_WORKSPACE)
+    const text = stdout.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n*$/, '\n')
+    writeFileSync(join(OUT_DIR, name), text, { encoding: 'utf8' })
+    process.stdout.write(`已生成 ${name}（${args.join(' ')}）\n`)
+  }
+} finally {
+  rmSync(TEMP_WORKSPACE, { recursive: true, force: true })
 }
 
 /*
@@ -84,7 +118,7 @@ const SYNTHETIC_DIR = join(OUT_DIR, 'synthetic')
 const SYNTHETIC_DAYS = 21
 const SYNTHETIC_START = '2026-09-01'
 const SYNTHETIC_KCAL = 2100
-const SYNTHETIC_START_WEIGHT = 90
+const SYNTHETIC_START_WEIGHT = 80
 const SYNTHETIC_DAILY_LOSS = 0.1
 
 function addDays(iso, days) {
@@ -136,7 +170,7 @@ writeFileSync(
   { encoding: 'utf8' }
 )
 
-const tempRoot = mkdtempSync(join(tmpdir(), 'thai-muscle-tdee-'))
+const tempRoot = mkdtempSync(join(tmpdir(), 'thin-muscle-tdee-'))
 try {
   mkdirSync(join(tempRoot, 'scripts'), { recursive: true })
   mkdirSync(join(tempRoot, 'records'), { recursive: true })

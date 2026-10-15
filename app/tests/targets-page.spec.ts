@@ -21,9 +21,9 @@ import type { ProfileRecord } from '@/domain/types'
 const PROFILE: ProfileRecord = {
   id: 'current',
   sex: 'male',
-  age: 26,
-  heightCm: 173,
-  weightKg: 88,
+  age: 30,
+  heightCm: 175,
+  weightKg: 75,
   goal: '减脂',
   trainingLevel: '新手',
   injuries: '无',
@@ -85,12 +85,12 @@ describe('目标页：首次估算（FR-902）', () => {
     await saveProfile(PROFILE)
     const wrapper = await mountPage()
     const text = wrapper.text()
-    // Mifflin-St Jeor：10×88 + 6.25×173 − 5×26 + 5 = 1836.25
-    expect(text).toContain('1836')
-    // 新手 → 每周 3 练 → 活动系数 1.55 → TDEE 2846.2
-    expect(text).toContain('2846')
+    // Mifflin-St Jeor：10×75 + 6.25×175 − 5×30 + 5 = 1698.75
+    expect(text).toContain('1698.8')
+    // 新手 → 每周 3 练 → 活动系数 1.55 → TDEE 2633.1
+    expect(text).toContain('2633.1')
     expect(text).toContain('减脂 -15%')
-    expect((inputFor(wrapper, '热量目标').element as HTMLInputElement).value).toBe('2420')
+    expect((inputFor(wrapper, '热量目标').element as HTMLInputElement).value).toBe('2240')
   })
 
   it('写入目标时同时留下第一行校准记录（FR-903）', async () => {
@@ -100,15 +100,15 @@ describe('目标页：首次估算（FR-902）', () => {
 
     await vi.waitFor(async () => {
       const targets = await getTargets()
-      expect(targets?.kcalTarget).toBe(2420)
-      expect(targets?.proteinTargetG).toBe(176)
+      expect(targets?.kcalTarget).toBe(2240)
+      expect(targets?.proteinTargetG).toBe(150)
       // 校准留痕是写入目标的第二步，等到它落库再断言
       expect(await listCalibrations()).toHaveLength(1)
     })
 
     const records = await listCalibrations()
     expect(records[0].basis).toContain('首次目标估算')
-    expect(records[0].measuredTdee).toBe(2846)
+    expect(records[0].measuredTdee).toBe(2633)
     expect(wrapper.text()).toContain('校准记录')
   })
 })
@@ -130,39 +130,39 @@ describe('目标页：调整门禁（FR-904 / FR-905）', () => {
 
   it('改动超过 ±150 kcal 时先让用户确认，确认后按改动值留痕', async () => {
     const wrapper = await withTargets()
-    await inputFor(wrapper, '热量目标').setValue('2000')
+    await inputFor(wrapper, '热量目标').setValue('1900')
     await button(wrapper, '保存调整').trigger('click')
 
     expect(wrapper.text()).toContain('确认这次调整')
     expect(wrapper.text()).toContain('超过 ±150 kcal 的上限')
-    expect((await getTargets())?.kcalTarget).toBe(2420)
+    expect((await getTargets())?.kcalTarget).toBe(2240)
 
     await button(wrapper, '确认并写入校准记录').trigger('click')
     await vi.waitFor(async () => {
-      expect((await getTargets())?.kcalTarget).toBe(2000)
+      expect((await getTargets())?.kcalTarget).toBe(1900)
     })
     const records = await listCalibrations()
     // 首次估算一行 + 本次校准一行
     expect(records).toHaveLength(2)
-    expect(records[0].kcalBefore).toBe(2420)
-    expect(records[0].kcalAfter).toBe(2000)
+    expect(records[0].kcalBefore).toBe(2240)
+    expect(records[0].kcalAfter).toBe(1900)
   })
 
   it('距上次校准不足 2 周会提示样本可能不足（FR-905）', async () => {
     const wrapper = await withTargets()
-    await inputFor(wrapper, '热量目标').setValue('2350')
+    await inputFor(wrapper, '热量目标').setValue('2170')
     await button(wrapper, '保存调整').trigger('click')
     expect(wrapper.text()).toContain('样本可能不足')
   })
 
   it('取消时不写库', async () => {
     const wrapper = await withTargets()
-    await inputFor(wrapper, '热量目标').setValue('2000')
+    await inputFor(wrapper, '热量目标').setValue('1900')
     await button(wrapper, '保存调整').trigger('click')
     await button(wrapper, '取消').trigger('click')
 
     expect(wrapper.text()).not.toContain('确认这次调整')
-    expect((await getTargets())?.kcalTarget).toBe(2420)
+    expect((await getTargets())?.kcalTarget).toBe(2240)
     expect(await listCalibrations()).toHaveLength(1)
   })
 
@@ -184,14 +184,15 @@ describe('目标页：调整门禁（FR-904 / FR-905）', () => {
 
 describe('目标页：高体脂蛋白口径（FR-906）', () => {
   it('BMI ≥ 28 时提示改用目标体重或当前体重 × 1.6，并可一键重算', async () => {
-    await saveProfile(PROFILE) // 88 kg / 1.73 m → BMI 29.4
+    // 95 kg / 1.75 m → BMI 31.0，专门造一个高 BMI 的合成档案
+    await saveProfile({ ...PROFILE, weightKg: 95 })
     const wrapper = await mountPage()
-    expect(wrapper.text()).toContain('BMI 29.4')
+    expect(wrapper.text()).toContain('BMI 31')
     expect(wrapper.text()).toContain('当前体重 × 1.6')
 
     await button(wrapper, '按当前体重 × 1.6 重算蛋白').trigger('click')
     await vi.waitFor(() => {
-      expect((inputFor(wrapper, '蛋白(g)').element as HTMLInputElement).value).toBe('141')
+      expect((inputFor(wrapper, '蛋白(g)').element as HTMLInputElement).value).toBe('152')
     })
   })
 })

@@ -24,13 +24,13 @@ async function setup() {
   setActivePinia(createPinia())
   await seedFoods(foodSeed, FOOD_SEED_VERSION)
   await putTargets({
-    tdeeKcal: 2846,
-    kcalTarget: 2420,
-    proteinTargetG: 176,
+    tdeeKcal: 2633,
+    kcalTarget: 2100,
+    proteinTargetG: 140,
     fatTargetG: 70,
     carbTargetG: 270,
     fiberTargetG: 30,
-    sodiumMaxMg: 2300,
+    sodiumMaxMg: 2000,
     weeklyTrainingDays: 3,
     weeklySetsPerMuscle: 10,
     targetWeightKg: 65,
@@ -66,8 +66,8 @@ describe('记饮食 → 汇总', () => {
     const proteinRow = store.summaryRows.find((row) => row.key === 'proteinG')
     expect(kcalRow?.intake).toBeCloseTo(egg.kcal * 2, 6)
     expect(proteinRow?.intake).toBeCloseTo(egg.proteinG * 2, 6)
-    expect(kcalRow?.target).toBe(2420)
-    expect(kcalRow?.ratio).toBeCloseTo((egg.kcal * 2) / 2420, 6)
+    expect(kcalRow?.target).toBe(2100)
+    expect(kcalRow?.ratio).toBeCloseTo((egg.kcal * 2) / 2100, 6)
 
     expect(await listIntakeByDate(DATE)).toHaveLength(1)
     expect((await getDay(DATE))?.summarySnapshot?.rows[0].intake).toBeCloseTo(egg.kcal * 2, 6)
@@ -143,18 +143,18 @@ describe('记训练 → 汇总', () => {
 describe('记身体 → 汇总与体重序列', () => {
   it('保存晨重后进入序列，并可用于汇总', async () => {
     const store = await setup()
-    await store.saveBody({ weightAmKg: 85, weightPmKg: 86.6, sleepHours: 7 })
+    await store.saveBody({ weightAmKg: 70, weightPmKg: 71.6, sleepHours: 7 })
 
-    expect(store.day?.weightAmKg).toBe(85)
-    expect(store.summary.weightAmKg).toBe(85)
-    expect(store.weightSeries[DATE]).toBe(85)
-    expect(store.bodyWeightForBurn).toEqual({ weightKg: 85, from: DATE })
+    expect(store.day?.weightAmKg).toBe(70)
+    expect(store.summary.weightAmKg).toBe(70)
+    expect(store.weightSeries[DATE]).toBe(70)
+    expect(store.bodyWeightForBurn).toEqual({ weightKg: 70, from: DATE })
     expect((await getDay(DATE))?.sleepHours).toBe(7)
   })
 
   it('只填睡前重时不进入趋势序列', async () => {
     const store = await setup()
-    await store.saveBody({ weightPmKg: 86.6 })
+    await store.saveBody({ weightPmKg: 71.6 })
     expect(store.weightSeries[DATE]).toBeUndefined()
     expect(store.bodyWeightForBurn).toBeUndefined()
   })
@@ -164,7 +164,7 @@ describe('目标与口径', () => {
   it('目标存在时才给出差额与占比', async () => {
     const store = await setup()
     expect(store.hasTargets).toBe(true)
-    expect((await getTargets())?.kcalTarget).toBe(2420)
+    expect((await getTargets())?.kcalTarget).toBe(2100)
     expect(store.summaryRows.every((row) => row.target > 0)).toBe(true)
   })
 })

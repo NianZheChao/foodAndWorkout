@@ -115,7 +115,7 @@ export const FOOD_SEED_ROWS: SeedFood[] = [
   { name: "黑咖啡(无糖)", category: "补剂饮料", unit: "100ml", kcal: 2, proteinG: 0.1, fatG: 0, carbG: 0.3, fiberG: 0, sodiumMg: 2 },
   { name: "啤酒", category: "补剂饮料", unit: "100ml", kcal: 32, proteinG: 0.4, fatG: 0, carbG: 3.1, fiberG: 0, sodiumMg: 4 },
   { name: "啤酒(市售 4.5%vol)", category: "补剂饮料", unit: "100ml", kcal: 42, proteinG: 0.4, fatG: 0, carbG: 3.7, fiberG: 0, sodiumMg: 4, note: "常见瓶装熟啤 估算值 酒精度差异大" },
-  { name: "高糖饼干", category: "零食", unit: "100g", kcal: 531.8, proteinG: 6.9, fatG: 27.6, carbG: 63.9, fiberG: 0, sodiumMg: 243, note: "用户提供标签 2225kJ/100g 折 531.8 kcal 宏量核对 531.6 kcal 钠 243mg 纤维未给按 0 计" },
-  { name: "黄油羊角可颂", category: "主食", unit: "个", kcal: 203.2, proteinG: 4.3, fatG: 10.2, carbG: 24, fiberG: 0, sodiumMg: 170, note: "用户标签 每个 850kJ 折 203.2 kcal 宏量核对 205.2 kcal 单只克重未知 暂按个计 纤维未给按 0 计" },
-  { name: "凯撒沙拉(市售 预包装)", category: "轻食", unit: "100g", kcal: 100.1, proteinG: 7, fatG: 5.3, carbG: 6.1, fiberG: 0, sodiumMg: 285, note: "用户提供标签 419kJ/100g 折 100.1 kcal 宏量核对一致 纤维未给按 0 计" }
+  { name: "高糖饼干", category: "零食", unit: "100g", kcal: 531.8, proteinG: 6.9, fatG: 27.6, carbG: 63.9, fiberG: 0, sodiumMg: 243, note: "产品标签 2225kJ/100g 折 531.8 kcal 宏量核对 531.6 kcal 钠 243mg 纤维未给按 0 计" },
+  { name: "黄油羊角可颂", category: "主食", unit: "个", kcal: 203.2, proteinG: 4.3, fatG: 10.2, carbG: 24, fiberG: 0, sodiumMg: 170, note: "产品标签 每个 850kJ 折 203.2 kcal 宏量核对 205.2 kcal 单只克重未知 暂按个计 纤维未给按 0 计" },
+  { name: "凯撒沙拉(市售 预包装)", category: "轻食", unit: "100g", kcal: 100.1, proteinG: 7, fatG: 5.3, carbG: 6.1, fiberG: 0, sodiumMg: 285, note: "产品标签 419kJ/100g 折 100.1 kcal 宏量核对一致 纤维未给按 0 计" }
 ]

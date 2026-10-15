@@ -35,15 +35,15 @@ const digest: ReportDigest = {
   period: { type: 'weekly', label: '2026-W41', start: '2026-10-09', end: '2026-10-15', days: 7 },
   coverage: { daysWithIntake: 4, daysWithWeight: 3, ratio: 0.57 },
   intake: {
-    avgKcal: 1623.6,
-    target: 2420,
-    avgProteinG: 71.1,
-    proteinTargetG: 176,
+    avgKcal: 1893.6,
+    target: 2240,
+    avgProteinG: 88.7,
+    proteinTargetG: 150,
     kcalHitDays: 0,
     proteinHitDays: 0,
     recordedDays: 4
   },
-  weight: { amSeries: [{ date: '2026-10-13', kg: 85 }], ma7: 85.6, changeKg: -0.8, changePctPerWeek: -3.3 },
+  weight: { amSeries: [{ date: '2026-10-13', kg: 75.1 }], ma7: 75.4, changeKg: -0.5, changePctPerWeek: -2.3 },
   training: {
     days: 1,
     minutes: 45,
@@ -53,14 +53,14 @@ const digest: ReportDigest = {
     targetDays: 3,
     targetSetsPerMuscle: 10
   },
-  currentTargets: { kcalTarget: 2420, proteinTargetG: 176, lastCalibrated: '2026-10-10' }
+  currentTargets: { kcalTarget: 2240, proteinTargetG: 150, lastCalibrated: '2026-10-10' }
 }
 
 describe('数字白名单', () => {
   it('摘要里出现的数字（含四舍五入形态与日期片段）都进白名单', () => {
     const whitelist = buildNumberWhitelist(digest)
     // 周期标签 `2026-W41` 与日期按数字片段收进来：模型引用时写的还是数字本身
-    for (const value of ['1623.6', '1624', '2420', '7', '2026', '41', '85.6', '86', '180', '3', '10']) {
+    for (const value of ['1893.6', '1894', '2240', '7', '2026', '41', '75.4', '75', '180', '3', '10']) {
       expect(whitelist.has(value), `白名单缺少 ${value}`).toBe(true)
     }
   })
@@ -70,8 +70,8 @@ describe('标记待核对数字', () => {
   it('正文引用了摘要里的数：不标记', () => {
     const flagged = flagUnknownNumbers(
       content({
-        summary: '本期日均摄入 1623.6 kcal，离 2420 kcal 的目标还差一截。',
-        actions: ['把蛋白质补到 176 g']
+        summary: '本期日均摄入 1893.6 kcal，离 2240 kcal 的目标还差一截。',
+        actions: ['把蛋白质补到 150 g']
       }),
       digest
     )

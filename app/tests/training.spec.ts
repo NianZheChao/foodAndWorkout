@@ -51,8 +51,8 @@ describe('容量负荷', () => {
 })
 
 describe('MET 消耗', () => {
-  it('与记录里的估算一致：4 MET / 87 kg / 45 min ≈ 274 kcal', () => {
-    expect(metKcal(4, 87, 45)).toBeCloseTo(274.05, 4)
+  it('与记录里的估算一致：5 MET / 75 kg / 45 min ≈ 295 kcal', () => {
+    expect(metKcal(5, 75, 45)).toBeCloseTo(295.31, 2)
   })
 })
 
