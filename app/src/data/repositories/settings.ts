@@ -15,6 +15,8 @@ export function defaultSettings(): SettingsRecord {
       { id: 'monthly-report', label: '月初生成月报', time: '20:00', enabled: true }
     ],
     mutedFields: [],
+    // FR-1602：三项目自报数据默认都带给模型，用户可以在「今日指导」的预览里单独关掉
+    shareRecovery: { sleep: true, energy: true, soreness: true },
     updatedAt: Date.now()
   }
 }

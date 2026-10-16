@@ -1,5 +1,6 @@
 import Dexie, { type Table } from 'dexie'
 import type {
+  AdviceRecord,
   CalibrationRecord,
   DayRecord,
   DraftRecord,
@@ -20,10 +21,14 @@ import type {
 export const DB_NAME = 'thin-muscle-plan'
 /**
  * v1：初始表结构。
- * v2：新增 `drafts`（澄清未完成的草稿，§6.12），其余表结构不变 —— 只需声明新增的表，
- *     Dexie 会保留 v1 里已声明的存储，无需重复书写。
+ * v2：新增 `drafts`（澄清未完成的草稿，§6.12），其余表结构不变。
+ * v3：新增 `adviceLog`（每日指导与「采纳 / 不采纳」表态，§6.4.2），其余表结构不变。
+ *
+ * **每个版本只声明这一版新增的存储**，绝不写成「当前版本 + 全量表」——
+ * 那样一来 `version(2)` 会被理解成「v2 里只有这几张表」，1 → 2 的升级会把其余存储全删掉，
+ * 老用户的数据会当场蒸发（2026-10-16 加 v3 时踩到过，`db.spec.ts` 的迁移用例守着这条）。
  */
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 /** 单例对象存储使用固定主键 */
 export const SINGLETON_KEY = 'current'
@@ -47,11 +52,12 @@ export class ThinMusclePlanDb extends Dexie {
   llmLogs!: Table<LlmLog, string>
   modelConfig!: Table<ModelConfigRecord, string>
   drafts!: Table<DraftRecord, string>
+  adviceLog!: Table<AdviceRecord, string>
   meta!: Table<MetaRecord, string>
 
   constructor(name: string = DB_NAME) {
     super(name)
-    this.version(SCHEMA_VERSION).stores({
+    this.version(1).stores({
       days: 'date',
       intake: 'id, date, meal, foodId, pendingFlag',
       workout: 'id, date, exercise, type',
@@ -68,6 +74,7 @@ export class ThinMusclePlanDb extends Dexie {
       meta: 'key'
     })
     this.version(2).stores({ drafts: 'id, date, status' })
+    this.version(3).stores({ adviceLog: 'id, date, createdAt' })
   }
 }
 

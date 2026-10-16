@@ -58,6 +58,7 @@ describe('页面挂载（阶段 1 已落地的路由）', () => {
     '/log/quick',
     '/summary',
     '/trend',
+    '/coach',
     '/reports',
     '/reports/rep_missing',
     '/targets',
@@ -214,8 +215,16 @@ describe('导航可达性（二级页面不能是孤岛）', () => {
     expect(router.currentRoute.value.path).toBe('/settings/model')
   })
 
+  it('今日页常驻「今日指导」入口（不依赖今天有没有生成过）', async () => {
+    const { wrapper, router } = await mountApp('/today')
+    expect(wrapper.text()).toContain('今日指导')
+    await button(wrapper, '生成今日指导').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/coach')
+  })
+
   it('二级页面都带返回按钮，点了回到来源页', async () => {
-    for (const path of ['/targets', '/profile', '/settings/model', '/log/quick', '/data']) {
+    for (const path of ['/targets', '/profile', '/settings/model', '/log/quick', '/data', '/coach']) {
       const { wrapper, router } = await mountApp('/today')
       await router.push(path)
       await flushPromises()

@@ -15,9 +15,11 @@ import { runQueue } from '@/application/queue'
 import { fmtNumber, fmtPercent } from '@/domain/format'
 import { formatDateCn, todayIso } from '@/app/date'
 import { db, SCHEMA_VERSION } from '@/data/db'
+import { getAdviceByDate } from '@/data/repositories/adviceLog'
 import { countFoods } from '@/data/repositories/foods'
 import { countOpenOps } from '@/data/repositories/pendingOps'
 import { META_KEYS, getMeta } from '@/data/meta'
+import type { AdviceRecord } from '@/domain/types'
 
 const router = useRouter()
 const store = useDayStore()
@@ -26,12 +28,15 @@ const foodCount = ref(0)
 const queueCount = ref(0)
 const seedVersion = ref('-')
 const retrying = ref(false)
+/** 今天的 AI 指导（不在这里生成：生成要花钱，得用户点进 /coach 才会调用模型） */
+const advice = ref<AdviceRecord>()
 
 onMounted(async () => {
   await store.load(todayIso())
   foodCount.value = await countFoods()
   queueCount.value = await countOpenOps()
   seedVersion.value = (await getMeta<string>(META_KEYS.seedVersion)) ?? '-'
+  advice.value = await getAdviceByDate(todayIso())
 })
 
 const weightText = computed(() =>
@@ -129,6 +134,27 @@ async function retryQueue(): Promise<void> {
       </p>
     </div>
 
+    <div class="card">
+      <div class="card-head">
+        <h2 class="card-title">今日指导</h2>
+        <span class="tag">{{ advice ? '已生成' : '未生成' }}</span>
+      </div>
+      <template v-if="advice">
+        <p class="coach-line">{{ advice.content.headline }}</p>
+        <ul v-if="advice.content.focus.length" class="hint-list">
+          <li v-for="item in advice.content.focus" :key="item">{{ item }}</li>
+        </ul>
+      </template>
+      <p v-else class="muted">
+        AI 读近 7 天的本地摘要，指出问题与今天该做的事（不出食谱、不排训练），每条建议都带本地依据。
+      </p>
+      <div class="link-grid">
+        <van-button size="small" type="primary" plain @click="router.push('/coach')">
+          {{ advice ? '看依据与反馈' : '生成今日指导' }}
+        </van-button>
+      </div>
+    </div>
+
     <div class="entry-grid">
       <van-button type="primary" block @click="router.push('/log/diet')">记饮食</van-button>
       <van-button plain type="primary" block @click="router.push('/log/workout')">记训练</van-button>
@@ -193,6 +219,12 @@ async function retryQueue(): Promise<void> {
 </template>
 
 <style scoped>
+.coach-line {
+  margin: 0 0 8px;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
 .progress-pct {
   margin-left: 6px;
   color: var(--brand);

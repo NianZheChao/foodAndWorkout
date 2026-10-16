@@ -266,6 +266,71 @@ export interface ReportRecord {
   updatedAt: number
 }
 
+/** 每日指导（T3.7 / §6.4.2）。`kind` 与报告一致：事实 / 推断必须由模型自己标出来。 */
+export type AdviceKind = 'fact' | 'inference'
+
+/**
+ * 一条指导建议。
+ *
+ * `basis` 是它与本地数字的挂钩（NFR-13）：必须命中摘要 / 当日缺口里**真实存在**的字段路径，
+ * 命中不了的整条不展示 —— 依据是这套东西的底线，不是装饰。
+ */
+export interface CoachAdviceItem {
+  kind: AdviceKind
+  text: string
+  /** 字段路径：`today.` 开头相对当日缺口，其余相对摘要（如 `intake.avgProteinG`） */
+  basis: string[]
+  /** 用户表态：true 采纳 / false 不采纳 / undefined 还没说 —— 下一轮 `history.advice` 只带表过态的 */
+  adopted?: boolean
+}
+
+export interface CoachContent {
+  headline: string
+  advice: CoachAdviceItem[]
+  focus: string[]
+  ask: string[]
+  disclaimer: string
+}
+
+/**
+ * 当日缺口（`coach.daily` 输入的 today 块）。
+ *
+ * `remainingKcal` / `remainingProteinG` 在**没有目标**时留空：没目标就没有「还差多少」，
+ * 补 0 等于给模型一个可以引用的事实（和摘要里空值一律留空同一条纪律）。
+ */
+export interface CoachTodayGap {
+  kcalSoFar: number
+  proteinSoFarG: number
+  remainingKcal?: number
+  remainingProteinG?: number
+  pendingItems: number
+  trainedToday: boolean
+  weightAmKg?: number
+}
+
+/**
+ * 一天的指导（`adviceLog`，§6.4.2）。
+ *
+ * 同日默认只生成一次：`fingerprint` 是「摘要 + 当日缺口」的指纹，数据变了（或用户手动刷新）
+ * 才重新调用模型 —— 指导是高频调用，不能每次打开页面都花钱（FR-1409 / §6.9 结果缓存）。
+ */
+export interface AdviceRecord {
+  id: string
+  date: string
+  content: CoachContent
+  fingerprint: string
+  model?: string
+  taskVersion?: number
+  /** 模型文本里被数字守卫标为「待核对」的数字（与报告同一套规则） */
+  flaggedNumbers?: string[]
+  /** 被依据校验丢掉、没有展示的建议条数：丢了内容要能说明，不能静默 */
+  droppedAdvice?: number
+  /** 本地闸门给出的提示（样本不足、被去掉的调整目标类建议等） */
+  notices?: string[]
+  createdAt: number
+  updatedAt: number
+}
+
 export interface CalibrationRecord {
   id: string
   date: string
@@ -336,6 +401,11 @@ export interface SettingsRecord {
   theme: 'light' | 'dark' | 'auto'
   reminders: ReminderSetting[]
   mutedFields: string[]
+  /**
+   * FR-1602（2026-10-16 提升为所有调用）：指导类调用频率高，睡眠 / 精力 / 酸痛要能**单独**关掉。
+   * 关掉的字段既不进摘要聚合，也不进请求体；缺省（老数据）视为全开，见 `application/coach.ts` 的读法。
+   */
+  shareRecovery?: { sleep: boolean; energy: boolean; soreness: boolean }
   lastBackupAt?: number
   updatedAt: number
 }

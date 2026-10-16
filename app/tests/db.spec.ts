@@ -27,6 +27,7 @@ describe('schema', () => {
     const names = probe.tables.map((t) => t.name).sort()
     expect(names).toEqual(
       [
+        'adviceLog',
         'calibrations',
         'days',
         'drafts',
@@ -47,7 +48,7 @@ describe('schema', () => {
     probe.close()
   })
 
-  it('v1 → v2 只新增 drafts，既有数据原样保留', async () => {
+  it('v1 → 最新版只新增 drafts / adviceLog，既有数据原样保留', async () => {
     const name = 'migration-probe'
     const legacy = new Dexie(name)
     legacy.version(1).stores({
@@ -61,9 +62,11 @@ describe('schema', () => {
 
     const upgraded = new ThinMusclePlanDb(name)
     await upgraded.open()
-    expect(upgraded.verno).toBe(2)
+    expect(upgraded.verno).toBe(SCHEMA_VERSION)
     expect(await upgraded.days.get('2026-10-01')).toMatchObject({ date: '2026-10-01', weekday: '三' })
-    expect(upgraded.tables.map((table) => table.name)).toContain('drafts')
+    const names = upgraded.tables.map((table) => table.name)
+    expect(names).toContain('drafts')
+    expect(names).toContain('adviceLog')
     upgraded.close()
   })
 

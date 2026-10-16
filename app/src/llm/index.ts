@@ -10,6 +10,7 @@ import { chatCompletion, type ChatContentPart, type ChatMessage, type ClientDeps
 import { toLlmError, type LlmErrorKind } from './errors'
 import { parseJsonFromModel } from './text'
 import { outputLimitOf, type LlmTask } from './types'
+import { coachDailyTask } from './tasks/coach'
 import { foodResolveTask } from './tasks/foodResolve'
 import { logParseTask } from './tasks/logParse'
 import { reportMonthlyTask, reportWeeklyTask } from './tasks/report'
@@ -18,6 +19,7 @@ import { getModelConfig, isModelConfigured, saveModelConfig } from '@/data/repos
 import type { ModelConfigRecord } from '@/domain/types'
 
 export const TASKS = {
+  'coach.daily': coachDailyTask,
   'food.resolve': foodResolveTask,
   'log.parse': logParseTask,
   'report.weekly': reportWeeklyTask,

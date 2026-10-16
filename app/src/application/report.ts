@@ -26,7 +26,8 @@ import type { ReportContent, ReportDigest, ReportRecord, ReportType } from '@/do
 /** 报告里的数值区：区间 + 本地摘要（区间可能被「到今天为止」截短）。 */
 export type DigestSource = { period: ReturnType<typeof periodOf>; digest: ReportDigest }
 
-async function loadTargets(): Promise<DigestTargets> {
+/** 摘要需要的目标值；每日指导（`application/coach.ts`）也读这一份，避免两处口径分叉。 */
+export async function loadDigestTargets(): Promise<DigestTargets> {
   const targets = await getTargets()
   return {
     kcalTarget: targets?.kcalTarget ?? 0,
@@ -53,7 +54,7 @@ export async function buildDigest(type: ReportType, endDate: string): Promise<Di
   const start = period.start > endDate ? endDate : period.start
   const end = period.end > endDate ? endDate : period.end
   const [targets, dayRows, intakeRows, workoutRows, previousReports] = await Promise.all([
-    loadTargets(),
+    loadDigestTargets(),
     listDaysInRange(start, end),
     listIntakeInRange(start, end),
     listWorkoutInRange(start, end),

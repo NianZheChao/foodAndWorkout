@@ -39,15 +39,25 @@ function collectNumbers(value: unknown, into: Set<string>): void {
   }
 }
 
-/** 摘要里真实存在的数字集合。 */
-export function buildNumberWhitelist(digest: ReportDigest): Set<string> {
+/**
+ * 任意「本地事实对象」里真实存在的数字集合。
+ *
+ * 报告传摘要，每日指导传「摘要 + 当日缺口」—— 白名单必须是同一个实现，
+ * 否则同一句话在两处一个放行一个高亮（§6.4 / §6.4.2 共用一套数字守卫）。
+ */
+export function buildNumberWhitelistFrom(source: unknown): Set<string> {
   const numbers = new Set<string>()
-  collectNumbers(digest, numbers)
+  collectNumbers(source, numbers)
   return numbers
 }
 
+/** 摘要里真实存在的数字集合。 */
+export function buildNumberWhitelist(digest: ReportDigest): Set<string> {
+  return buildNumberWhitelistFrom(digest)
+}
+
 /**
- * 从报告正文里抽出数字 token，返回**不在白名单**的那些（去重，保持出现顺序）。
+ * 从一批正文里抽出数字 token，返回**不在白名单**的那些（去重，保持出现顺序）。
  *
  * 放行规则只有两种：数字在摘要里出现过，或者它是 `0-100%` 的百分比形式
  * （报告里写「达标 40%」比写「达标 40 天」常见得多）。
@@ -55,22 +65,8 @@ export function buildNumberWhitelist(digest: ReportDigest): Set<string> {
  * 注意**不**放行「任意小整数」：`78 kg` 这种编造出来的体重正好落在 0-100 里，
  * 一旦放宽就全漏过去了。
  */
-export function flagUnknownNumbers(content: ReportContent, digest: ReportDigest): string[] {
-  const whitelist = buildNumberWhitelist(digest)
-  const texts = [
-    content.summary,
-    ...content.training.notes,
-    content.training.assessment,
-    ...content.diet.notes,
-    content.diet.assessment,
-    ...content.recovery.notes,
-    ...content.findings.map((item) => item.text),
-    ...content.issues,
-    ...content.actions,
-    content.calibration.rationale,
-    content.disclaimer
-  ]
-
+export function flagUnknownNumbersInTexts(texts: readonly string[], source: unknown): string[] {
+  const whitelist = buildNumberWhitelistFrom(source)
   const flagged: string[] = []
   for (const text of texts) {
     for (const match of text.matchAll(NUMBER_RE)) {
@@ -84,6 +80,27 @@ export function flagUnknownNumbers(content: ReportContent, digest: ReportDigest)
     }
   }
   return flagged
+}
+
+/** 报告正文里所有会展示给用户的文字（守卫的扫描面）。 */
+export function reportContentTexts(content: ReportContent): string[] {
+  return [
+    content.summary,
+    ...content.training.notes,
+    content.training.assessment,
+    ...content.diet.notes,
+    content.diet.assessment,
+    ...content.recovery.notes,
+    ...content.findings.map((item) => item.text),
+    ...content.issues,
+    ...content.actions,
+    content.calibration.rationale,
+    content.disclaimer
+  ]
+}
+
+export function flagUnknownNumbers(content: ReportContent, digest: ReportDigest): string[] {
+  return flagUnknownNumbersInTexts(reportContentTexts(content), digest)
 }
 
 /** 校准幅度门禁（FR-904）：`recommended=true` 且幅度超限时降级成待确认。 */

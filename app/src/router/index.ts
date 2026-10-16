@@ -11,6 +11,12 @@ export const routes: RouteRecordRaw[] = [
   { path: '/log/:kind(diet|workout|body)?', name: 'log', component: () => import('@/pages/LogHubPage.vue'), meta: { title: '记录', spec: 'M1 FR-100 / M2 FR-200 / M3 FR-300' } },
   { path: '/summary/:date?', name: 'summary', component: () => import('@/pages/SummaryPage.vue'), meta: { title: '当日汇总', spec: 'M5 FR-500' } },
   { path: '/trend', name: 'trend', component: () => import('@/pages/TrendPage.vue'), meta: { title: '趋势', spec: 'M6 FR-600' } },
+  {
+    path: '/coach',
+    name: 'coach',
+    component: () => import('@/pages/CoachPage.vue'),
+    meta: { title: '今日指导', spec: 'M8 A 级 / §6.4.2' }
+  },
   { path: '/reports', name: 'reports', component: () => import('@/pages/ReportsPage.vue'), meta: { title: '报告', spec: 'M7 FR-700' } },
   {
     path: '/reports/:id',
