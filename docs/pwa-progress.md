@@ -6,7 +6,7 @@
 - 最后更新：2026-10-16
 - 应用版本：`0.1.0`（`app/package.json`）
 - 分支 / 最近提交：`main` / `c42cd12 feat: 生成式推荐（T3.8 第一步）：约束字段恢复 + /settings 开关 + 档案约束卡片`
-- 质量基线（2026-10-16 实测）：`npm test` 59 文件 / 558 项（`npm run build` 随之通过）；**全量并行跑时只剩一个已知偶发失败**（`workspace-script.spec.ts` 那条真去 `spawn` Python 的用例撞 5 秒默认超时），单独重跑即可，见 §8；`workspace-script.spec.ts` 没装 Python 时整组跳过；`npm run build`（含 `vue-tsc -b` 类型检查，**测试文件也在类型检查范围内**）通过
+- 质量基线（2026-10-16 实测）：`npm test` 59 文件 / 558 项（`npm run build` 随之通过）；全量并行跑**已不再有偶发失败**（两条老竞态已按 §8 修掉，真跑 Python 的那条也给了 30 秒超时）；`workspace-script.spec.ts` 没装 Python 时整组跳过；`npm run build`（含 `vue-tsc -b` 类型检查，**测试文件也在类型检查范围内**）通过
 
 ## 0. 三十秒速览
 
@@ -650,6 +650,9 @@ T4.4 留下的那笔欠账：模型给的六项数值是**估算**，手里有�
   「先不发」算。`llm/` 只负责算，弹窗交给 `app/`，换个壳子（CLI / 桌面）照样能接。
 - **接线点**：一句话记录（`LogQuickPage`）、每日指导、报告（列表页与详情页的重新生成）、
   推荐（`/plan`）、校准向导 —— 六处都传了 `confirmOverBudget`；**队列 `runQueue` 不传**。
+- **顺带根治最后一个偶发失败**：`workspace-script.spec.ts` 那条「脚本自己写的 AUTO 区块与我们写的逐字一致」
+  每个日期都 `spawn` 一次 Python，并行跑时实测 6.5 秒、正好撞 5 秒默认超时；按 §8 记的修法给它显式写了
+  `}, 30_000)`。到此**全量并行跑不再有偶发失败**。
 - 验收：`npm test` 59 文件 / 558 项、`npm run build` 通过。新用例 `llm-budget.spec.ts`（15：
   超线才问 / 同意才发 / 拒绝就零请求零日志 / 无通道照发 + 9 个任务的预算与 FR-1413 对得上）、
   `budget-confirm.spec.ts`（3：文案带估算与预算 / 取消与关窗都算不发 / 不足 1000 不写成 0.4k）。
@@ -924,11 +927,11 @@ npm run build
   等 DB，再用**一次** `flushPromises()` 就去读渲染结果，50 多个 worker 并行抢资源时这一次等待不够。
   更隐蔽的一种是「记录齐了、标记还没齐」：`day.markPending` 是写完记录之后**另一次**写入，
   于是 `toHaveLength(4)` 通过了而 `pendingFlag` 还是旧的。修法统一成把断言本身包进 `vi.waitFor`，
-  别去调大 `timeout` 或连甩几次 `flushPromises()`。这两处修完，全量并行跑只剩下面那条 Python 用例是偶发。
-- **全量跑 `npm test` 时，`workspace-script.spec.ts` 里「脚本自己写的 AUTO 区块与我们写的逐字一致」可能撞 5 秒默认超时**
-  （2026-10-16 观察：49 个 worker 并行时该用例实测 6.5 秒；单独跑这个文件 8.9 秒内全过）。它**真的**会
-  `spawn` Python 去跑 `nutrition.py`，机器忙的时候就会超。看到它失败先单独重跑该文件，别据此判断导出逻辑坏了；
-  要根治可以给这一条用例单独放宽 `timeout`。
+  别去调大 `timeout` 或连甩几次 `flushPromises()`。这两处修完，全量并行跑就一条偶发都不剩了（下面那条 Python 用例也已修）。
+- **`workspace-script.spec.ts` 里真跑 Python 的那两条用例要给足超时**（2026-10-16 已修）。
+  「脚本自己写的 AUTO 区块与我们写的逐字一致」**每个日期都 spawn 一次** `nutrition.py`（fixture 十几个日期），
+  49 个 worker 并行时实测 6.5 秒，正好撞上 Vitest 的 5 秒默认超时；现在这一条显式写了 `}, 30_000)`。
+  以后往这个文件里加「真跑脚本」的用例，记得同样给超时 —— 断言失败与「进程还没跑完」在日志里长得一样。
 - **给 Dexie 加版本时，第一行必须是 `this.version(1)` 的全量表**（2026-10-16 真事故，加 `adviceLog` 时踩到）：
   原来第一行是 `this.version(SCHEMA_VERSION).stores({...14 张表})`，`SCHEMA_VERSION` 从 2 改成 3 之后，
   这一行变成了「v3 的全量表」，而后面的 `this.version(2).stores({ drafts })` 就被读成「v2 里只有 drafts 一张表」——
@@ -978,8 +981,7 @@ npm run build
 
 ## 10. 交接自检清单
 
-- [ ] `cd app && npm install && npm test`（59 文件 / 558 项；`workspace-script.spec.ts`
-      偶发失败时重跑一次即可，见 §8）
+- [ ] `cd app && npm install && npm test`（59 文件 / 558 项；`workspace-script.spec.ts` 那条真跑 Python 的用例要给足超时，见 §8）
 - [ ] `npm run build` 通过
 - [ ] `npm run preview` 能打开今日页，底部 tab 来回切换不卡死
 - [ ] 今日页顶部有一次性的「装到主屏幕」提示，点「知道了」后刷新不再出现

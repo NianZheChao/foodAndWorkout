@@ -104,6 +104,8 @@ describe.skipIf(!LAUNCHER)('工作区文本导出：原脚本能直接消费', (
     expect(result.status).toBe(0)
   })
 
+  // 这条用例**每个日期都 spawn 一次 Python**（fixture 十几个日期），机器忙时会撞上 Vitest 的 5 秒默认超时。
+  // 真跑脚本就是要等进程，给宽一点（§8 记过这次踩坑；顺带避免全量并行时误报）。
   it('脚本自己写的 AUTO 区块与我们写的逐字一致', async () => {
     await seedFromFixtures()
     await seedTrainingDay()
@@ -121,7 +123,7 @@ describe.skipIf(!LAUNCHER)('工作区文本导出：原脚本能直接消费', (
         expect(autoBlock(onDisk), `${date} 的 AUTO 区块`).toBe(autoBlock(fileOf(files, `records/${date}.md`)))
       }
     })
-  })
+  }, 30_000)
 
   it('导出的 foods.csv 能被脚本 lookup 认出来（列名、单位、引号都对）', async () => {
     await upsertFood({
