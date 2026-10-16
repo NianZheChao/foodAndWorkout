@@ -5,8 +5,8 @@
 
 - 最后更新：2026-10-16
 - 应用版本：`0.1.0`（`app/package.json`）
-- 分支 / 最近提交：`main` / `13b4115 feat: 每日指导 coach.daily（A 级 P0）+ adviceLog（schema v3）`
-- 质量基线（2026-10-16 实测）：`npm test` 38 文件 / 370 项（**`quick-log-page.spec.ts` 仍是偶发失败，7 次重跑里出现 3 次，见 §8**）；`npm run build`（含 `vue-tsc -b` 类型检查）通过
+- 分支 / 最近提交：`main` / `ec942f5 feat: 校准向导 calibration.review（T3.5）+ /calibration 页 + 三道本地门禁`
+- 质量基线（2026-10-16 实测）：`npm test` 42 文件 / 394 项（**`quick-log-page.spec.ts` 仍是偶发失败，7 次重跑里出现 3 次，见 §8**）；`npm run build`（含 `vue-tsc -b` 类型检查）通过
 
 ## 0. 三十秒速览
 
@@ -16,11 +16,12 @@
 | 阶段 1 | 本地能力闭环：领域计算、三类记录页、当日汇总、趋势页 | ✅ 完成 |
 | 阶段 2 | 模型能力：配置与连通性、LLM 客户端、食物补全、自由文本 / 图片记录、澄清引擎、队列执行器 | 🟡 主体完成，2 处收尾未做（见 §3） |
 | 阶段 3 | 报告与指导：周报月报、每日指导（A 级）、校准向导、B 级推荐 | 🟡 报告（T3.1 - T3.3）、摘要 v2（T3.6）、每日指导（T3.7，见 §2.10）、校准向导（T3.5，见 §2.11）已完成；**推荐周计划取消**（T3.4），只剩 B 级推荐（T3.8，默认关）未做 |
-| 阶段 4 | 数据治理：导入导出、快照回滚、食物库治理、提醒、设置 | ⬜ 未开始 |
+| 阶段 4 | 数据治理：导入导出、快照回滚、食物库治理、提醒、设置 | 🟡 导出 / 导入（T4.1，见 §2.12）已完成；工作区文本导出（T4.2）、快照回滚（T4.3）、食物库治理（T4.4）、提醒（T4.5）、设置（T4.6）未做 |
 
 一句话总结：**「配好档案与目标 → 用一句话或表单记一整天（含未知食物自动补全）→ 看当日汇总与趋势 →
 每天拿一份带依据的 AI 指导 → 用近 4 周的记录做一次校准 → 生成周报 / 月报」这条链路已经完整**；
-推荐周计划已决定不做（B 级生成式推荐默认关、未做），导入导出与快照还没有。
+推荐周计划已决定不做（B 级生成式推荐默认关、未做）；数据能导出成 JSON 包、也能导回来，
+但工作区文本导出、快照回滚与设置页还没有。
 
 ## 1. 文档地图
 
@@ -340,6 +341,33 @@
   `calibration-page.spec.ts` 3 项；`targets-page.spec.ts` 补一条"任何状态下都能进校准向导"）。
   口径与八条落地约定见设计文档 §6.7 的「实现补充」。
 
+### 2.12 T4.1 落地：导出包 / 导入（2026-10-16）
+
+阶段 4 的第一件事：把「数据只在这台设备的浏览器里」这句话的风险降下来。
+
+- **导出** `io/exportPackage.ts`：单文件 JSON `{ manifest, data, checksum }`。`data` 含记录 / 食物库 /
+  报告 / 目标 / 档案 / 设置 / 快照 / 待办 / 草稿 / 指导历史；**不含 `modelConfig` 与 `llmLogs`**
+  （FR-1305：token 与调用日志只存本机），也不含 `meta`（本机启动标记）。文件名
+  `薄肌计划-export-YYYY-MM-DD.json`，导出后界面给出条目数与校验和。
+- **校验和算在规范化 JSON 上**（对象键递归排序）：直接 `JSON.stringify` 会受键序影响 ——
+  同一份数据换个键序就得到不同校验和，导入时会把完好的文件判成「被改过」。
+- **导入** `io/importPackage.ts` 三步走：`parseExportPackage`（乱 JSON / 不是本应用的文件 /
+  `formatVersion` 或 `schemaVersion` 比本机新 / 校验和不符 —— 一律**整包拒绝**）→ `previewImport`
+  （新增日期、冲突日期、食物重名、单例是否合并）→ `applyImport`（三种冲突策略 + 导入报告）。
+  老包缺 `drafts` / `adviceLog` 时补成空数组、不报错（加字段是加法）。
+- **冲突策略**：`skip`（默认，本机不动）/ `merge`（条目按 id 并集，`days` 头部字段逐字段取「文件非空值」
+  并留痕）/ `overwrite`（**只覆盖用户显式勾选的日期**，没勾的按跳过）。刻意不用一个大事务包住整包：
+  单条不合法只影响那一条、其余继续（FR-1111），代价是可能落下半包 —— 所以每次都给导入报告。
+- **单例**（目标 / 档案 / 设置）**绝不整体覆盖**：本机非空的字段优先，只补本机没有的
+  （否则会冲掉本机「不再追问」名单）。
+- **汇总重算**：文件里的 `summarySnapshot` 一律不采信，导入后按本地口径重算受影响日期
+  （`application/daySummary.ts`；`tests/day-summary.spec.ts` 把它的口径与 `store/day.ts` 的 `summary` 钉在一起）。
+- **页面 `/data`**（`DataPage.vue`，入口在今日页「更多」）：导出卡片（条目数 + 存储占用 + 校验和）、
+  导入卡片（选文件 → 预演 → 选策略 → 确认 → 报告）。
+- 验收：`npm test` 42 文件 / 394 项、`npm run build` 通过（新用例 `export-package.spec.ts` 5 项、
+  `import-package.spec.ts` 13 项、`day-summary.spec.ts` 2 项、`data-page.spec.ts` 3 项）。
+  口径与七条落地约定见设计文档 §7.1 / §7.4 的「实现补充」。
+
 ## 3. 部分完成：有明确缺口（优先补这些）
 
 | 编号 | 已实现 | 缺什么 | 建议落点 |
@@ -368,12 +396,16 @@
 
 | 任务 | 要做的事 | 依赖 / 注意 | 验收 |
 | --- | --- | --- | --- |
-| T4.1 | 导出包 / 导入（三种冲突策略 + 预览） | 落点 `app/src/io/exportPackage.ts`、`io/importPackage.ts`；页面 `/data` | 往返一致；导出后 Python `scripts/nutrition.py check --all` 通过 |
 | T4.2 | 工作区文本导出（`records/` / `foods.csv` / `profile.md` / `targets.md`） | `app/src/io/markdown/record.ts` 是**解析**侧，导出侧 `io/markdown/export.ts` 未写；必须生成 `AUTO:SUMMARY` 区块 | 可直接被原脚本消费 |
 | T4.3 | 快照与单日回滚 | `snapshots` 表已建但完全没用过 | 回滚后数据与快照一致 |
 | T4.4 | 食物库治理（`/foods`）：来源筛选、疑似重复、停用 | `foods` 表已有 `source` / `disabledFlag` 索引，`domain/foodName.ts` 已有归一化可做重复检测 | 被引用的条目不可删除 |
 | T4.5 | 提醒：应用内提醒 + 能力探测的本地通知 | 前提约束 TD-09：**无后端、不做 Web Push、不做 .ics / 日历导出**；设置页要写明限制 | 打开应用能看到当天未完成项；系统支持时按设定时间通知 |
-| T4.6 | `/settings`（提醒、单位、外观、不再追问名单）与 `/data`（导出导入、快照、存储占用、队列）、免责声明、诊断信息导出 | 需求 §9 要求在应用内展示免责声明；`modelConfig` 已有诊断信息的雏形 | 需求 §9 与 FR-1608 可验 |
+| T4.6 | `/settings`（提醒、单位、外观、不再追问名单）与 `/data` 剩下的部分（快照、队列、诊断信息导出）、免责声明 | 需求 §9 要求在应用内展示免责声明；`modelConfig` 已有诊断信息的雏形。**`/data` 的导出 / 导入已经做了**（T4.1） | 需求 §9 与 FR-1608 可验 |
+
+> **T4.1（导出包 / 导入）已于 2026-10-16 完成**，见 §2.12。
+> 「导出后 Python `check --all` 通过」属 **T4.2**（工作区文本导出），T4.1 只做结构化 JSON ——
+> 它的验收是「往返一致」，由 `tests/import-package.spec.ts` 覆盖。
+> 阶段 4 现在从 **T4.2 工作区文本导出**接着做。
 
 ## 5. 代码地图
 
@@ -387,7 +419,7 @@ app/
     data/         Dexie schema（db.ts）、仓储层（repositories/）、种子数据（seed/）
     llm/          OpenAI 兼容客户端、错误分类、文本抽取、任务注册表与流水线、tasks/
     application/  用例层：本地优先、业务校验、落库编排（foodLibrary / foodResolve / logParse / queue / report / coach / calibration）
-    io/markdown/  记录文件（Markdown）解析 —— 导入与对拍共用
+    io/           导出包组装（exportPackage）、导入校验 / 预演 / 落库（importPackage）；markdown/ 记录文件解析
     pages/        页面；components/ 共享组件；router/ 路由；store/ Pinia 会话态
   tests/          单元 / 对拍 / 组件测试（fixtures/ 与 helpers/ 同级）
   scripts/        构建期脚本：gen-seed.mjs / gen-expected.mjs / gen-icons.mjs
@@ -425,6 +457,10 @@ app/
 | 校准页面与入口 | `pages/CalibrationPage.vue`（`/calibration`）；目标页顶部常驻卡片在 `pages/TargetsPage.vue` |
 | 落库前拍平响应式对象 | `data/plain.ts` `toPlain`（所有仓储写入都过它） |
 | 记录文件解析 | `io/markdown/record.ts` |
+| 导出包（JSON） | `io/exportPackage.ts` `buildExportPackage` / `canonicalJson` / `checksumOf` |
+| 导入（校验 / 预演 / 落库） | `io/importPackage.ts` `parseExportPackage` / `previewImport` / `applyImport` |
+| 不带 Pinia 的当日汇总重算 | `application/daySummary.ts` `buildSummaryForDate` / `recomputeDaySummary` |
+| 数据页（导出 / 导入界面） | `pages/DataPage.vue`（`/data`，入口在今日页「更多」） |
 | 路由表 | `app/src/router/index.ts`（权威表格在 `docs/pwa-design.md` §8.1） |
 | 底部 tab 匹配规则 | `app/src/App.vue` 的 `tabs[].match` |
 
@@ -435,7 +471,7 @@ app/
 ```bash
 npm install
 npm run dev       # 本地开发服务器
-npm test          # 单元 / 对拍 / 组件测试（38 文件 / 370 项）
+npm test          # 单元 / 对拍 / 组件测试（42 文件 / 394 项）
 npm run build     # vue-tsc 类型检查 + 生产构建（产物 dist/）
 npm run preview   # 预览构建产物 —— 测 PWA 行为请用这个，不要用 dev
 npm run seed      # 从 ../data/foods.csv 重新生成内置食物库种子
@@ -549,14 +585,16 @@ npm run build
 4. ~~T3.6 摘要 v2~~ → ~~T3.7 每日指导（A 级）~~ —— 2026-10-16 已完成（见 §2.10）。
 5. ~~T3.5 校准向导~~ —— 2026-10-16 已完成（见 §2.11）：入口在目标页顶部常驻卡片，页面 `/calibration`，
    数字复用报告的 28 天摘要，三道本地门禁 + 采纳才 `applyCalibration`。（T3.4 推荐已取消，见 §2.9。）
-6. **T4.1 → T4.2 → T4.3** —— 导入导出与快照是「数据在本地」的安全网，建议在报告功能成型后尽快补上。
-7. **T4.4 - T4.6** 收尾打磨。**T3.8（B 级推荐）**放最后：它默认关，且开启前必须先恢复约束字段。
+6. ~~T4.1 导出包 / 导入~~ —— 2026-10-16 已完成（见 §2.12）：`/data` 页导出 JSON 包（不含 token 与调用日志）、
+   导入走「校验 → 预演 → 三种冲突策略 → 报告」。
+7. **T4.2 → T4.3** —— 工作区文本导出（能被原脚本消费）与快照回滚，是「数据在本地」剩下的两条安全带。
+8. **T4.4 - T4.6** 收尾打磨。**T3.8（B 级推荐）**放最后：它默认关，且开启前必须先恢复约束字段。
 
 每一步都能独立验收；建议每完成一项就更新本文第 2 / 3 / 4 节的表格，以及 `docs/pwa-design.md` §13 的状态标记。
 
 ## 10. 交接自检清单
 
-- [ ] `cd app && npm install && npm test`（38 文件 / 370 项；`quick-log-page.spec.ts` 偶发失败时重跑一次即可，见 §8）
+- [ ] `cd app && npm install && npm test`（42 文件 / 394 项；`quick-log-page.spec.ts` 偶发失败时重跑一次即可，见 §8）
 - [ ] `npm run build` 通过
 - [ ] `npm run preview` 能打开今日页，底部 tab 来回切换不卡死
 - [ ] 今日页顶部有一次性的「装到主屏幕」提示，点「知道了」后刷新不再出现

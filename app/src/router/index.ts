@@ -35,7 +35,12 @@ export const routes: RouteRecordRaw[] = [
   { path: '/profile', name: 'profile', component: () => import('@/pages/ProfilePage.vue'), meta: { title: '档案', spec: 'M10 FR-1000' } },
   { path: '/settings', name: 'settings', component: Placeholder, meta: { title: '设置', spec: 'M16 FR-1600' } },
   { path: '/settings/model', name: 'settings-model', component: () => import('@/pages/ModelSettingsPage.vue'), meta: { title: '模型设置', spec: 'M13 FR-1300' } },
-  { path: '/data', name: 'data', component: Placeholder, meta: { title: '数据', spec: 'M12 FR-1200' } }
+  {
+    path: '/data',
+    name: 'data',
+    component: () => import('@/pages/DataPage.vue'),
+    meta: { title: '数据', spec: 'M12 FR-1200 / §7' }
+  }
 ]
 
 export const router = createRouter({
