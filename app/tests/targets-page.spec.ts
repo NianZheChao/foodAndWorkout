@@ -67,6 +67,20 @@ beforeEach(async () => {
 })
 
 describe('目标页：首次估算（FR-902）', () => {
+  it('任何状态下都有进校准向导的常驻入口（T3.5）', async () => {
+    // 没有档案 / 没有目标的空态下也必须给得出去（页面不能是孤岛）
+    const router = createRouter({ history: createMemoryHistory(), routes })
+    await router.push('/targets')
+    await router.isReady()
+    const wrapper = mount(TargetsPage, { global: { plugins: [createPinia(), router] } })
+    await vi.waitFor(() => expect(wrapper.text()).toContain('校准向导'))
+
+    const entry = wrapper.findAll('button').find((item) => item.text().includes('打开校准向导'))
+    expect(entry).toBeTruthy()
+    await entry?.trigger('click')
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/calibration'))
+  })
+
   it('没有档案时先引导去填档案', async () => {
     const wrapper = await mountPage()
     expect(wrapper.text()).toContain('先填档案')

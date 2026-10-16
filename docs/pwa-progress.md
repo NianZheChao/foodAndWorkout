@@ -5,8 +5,8 @@
 
 - 最后更新：2026-10-16
 - 应用版本：`0.1.0`（`app/package.json`）
-- 分支 / 最近提交：`main` / `6f3a9d1 feat: 摘要 v2（恢复/RPE/有氧/钠纤维/上期数字）+ 指导能力分级定稿（A 级 P0，B 级可选默认关）`
-- 质量基线（2026-10-16 实测）：`npm test` 36 文件 / 349 项（**`quick-log-page.spec.ts` 仍是偶发失败，7 次重跑里出现 3 次，见 §8**）；`npm run build`（含 `vue-tsc -b` 类型检查）通过
+- 分支 / 最近提交：`main` / `13b4115 feat: 每日指导 coach.daily（A 级 P0）+ adviceLog（schema v3）`
+- 质量基线（2026-10-16 实测）：`npm test` 38 文件 / 370 项（**`quick-log-page.spec.ts` 仍是偶发失败，7 次重跑里出现 3 次，见 §8**）；`npm run build`（含 `vue-tsc -b` 类型检查）通过
 
 ## 0. 三十秒速览
 
@@ -15,12 +15,12 @@
 | 阶段 0 | 地基：脚手架、PWA 接入（含安装引导）、Dexie schema + 仓储层、种子食物库 | ✅ 完成 |
 | 阶段 1 | 本地能力闭环：领域计算、三类记录页、当日汇总、趋势页 | ✅ 完成 |
 | 阶段 2 | 模型能力：配置与连通性、LLM 客户端、食物补全、自由文本 / 图片记录、澄清引擎、队列执行器 | 🟡 主体完成，2 处收尾未做（见 §3） |
-| 阶段 3 | 报告与指导：周报月报、每日指导（A 级）、校准向导、B 级推荐 | 🟡 报告（T3.1 - T3.3）、摘要 v2（T3.6）、每日指导（T3.7，见 §2.10）已完成；**推荐周计划取消**（T3.4），校准向导（T3.5）与 B 级推荐（T3.8，默认关）未做 |
+| 阶段 3 | 报告与指导：周报月报、每日指导（A 级）、校准向导、B 级推荐 | 🟡 报告（T3.1 - T3.3）、摘要 v2（T3.6）、每日指导（T3.7，见 §2.10）、校准向导（T3.5，见 §2.11）已完成；**推荐周计划取消**（T3.4），只剩 B 级推荐（T3.8，默认关）未做 |
 | 阶段 4 | 数据治理：导入导出、快照回滚、食物库治理、提醒、设置 | ⬜ 未开始 |
 
 一句话总结：**「配好档案与目标 → 用一句话或表单记一整天（含未知食物自动补全）→ 看当日汇总与趋势 →
-每天拿一份带依据的 AI 指导 → 生成周报 / 月报」这条链路已经完整**；
-推荐周计划已决定不做（B 级生成式推荐默认关、未做），校准向导与导入导出还没有。
+每天拿一份带依据的 AI 指导 → 用近 4 周的记录做一次校准 → 生成周报 / 月报」这条链路已经完整**；
+推荐周计划已决定不做（B 级生成式推荐默认关、未做），导入导出与快照还没有。
 
 ## 1. 文档地图
 
@@ -319,6 +319,27 @@
 - 验收：`npm test` 36 文件 / 349 项、`npm run build` 通过（两个新用例文件：`coach.spec.ts` 12 项、
   `coach-run.spec.ts` 10 项、`coach-page.spec.ts` 3 项）。
 
+### 2.11 T3.5 落地：校准向导（2026-10-16）
+
+把「校准」从目标页里的一块表单升级成一条独立流程，AI 只负责判断、不负责算数。
+
+- **页面 `/calibration`**（`CalibrationPage.vue`，从目标页顶部常驻卡片进入）分三段：
+  **本地数字**（实测 TDEE 与样本、近 4 周均线与变化率、平均摄入与达标率、当前目标、距上次校准）→
+  **本地建议**（`proposeCalibration` 的口径，含 ±150 kcal 限幅说明）→ **AI 复核**（方向 / 幅度 / 理由 / 待盯项）。
+- **本地数字复用报告的 28 天摘要**（`application/calibration.ts` 调 `domain/reportDigest.buildReportDigest`），
+  所以两边给的建议口径一致；覆盖率的分母是 **28 个自然日**（没记录的天也占位），不是"有记录的天数"。
+- **三道本地门禁**（`domain/calibrationReview.ts`，纯函数）：TDEE 样本 <7 天 / 覆盖率 <50% / 距上次校准 <14 天 /
+  幅度 >±150 kcal —— 任何一条拦下都**把幅度归零、方向置「不变」、不提供「采纳」**；另有两条自洽修正
+  （说调整却给 0 幅度 → 当不建议调整；方向与幅度符号不一致 → 以幅度为准）。幅度门禁在**本地再判一次**，
+  模型回一个 −400 kcal 也进不了采纳（FR-904 是安全边界，不能靠提示词自觉）。
+- **向导不落库**：AI 复核结果只在页面内存里；点「采纳」才 `applyCalibration`（写目标 + 留一行校准记录）
+  并回 `/targets`。没配模型 / 模型失败时，本地数字与本地建议照常可用，生成按钮禁用并引导去 `/settings/model`。
+- **契约 `llm/tasks/calibration.ts`**：`calibration.review` v1，输出
+  `recommended / deltaKcal / direction / confidence / rationale / watchItems`，注册进 `TASKS`。
+- 验收：`npm test` 38 文件 / 370 项、`npm run build` 通过（新用例 `calibration-review.spec.ts` 15 项、
+  `calibration-page.spec.ts` 3 项；`targets-page.spec.ts` 补一条"任何状态下都能进校准向导"）。
+  口径与八条落地约定见设计文档 §6.7 的「实现补充」。
+
 ## 3. 部分完成：有明确缺口（优先补这些）
 
 | 编号 | 已实现 | 缺什么 | 建议落点 |
@@ -332,7 +353,6 @@
 
 | 任务 | 要做的事 | 依赖 / 注意 | 验收 |
 | --- | --- | --- | --- |
-| T3.5 | `calibration.review` + 校准向导（幅度与频率门禁） | `domain/calibration.ts` 的 `MAX_CALIBRATION_KCAL = 150` 已是现成门禁；写 `targets` 必须同时写 `calibrations` 留痕 | 超出 ±150 kcal 被拦下 |
 | T3.8 | **B 级生成式推荐（可选开关，默认关）** | 需求 M8 第二级：启用前**必须先恢复**忌口 / 过敏 / 可用器材 / 每餐时间四个约束字段（FR-1003 条件生效），否则不得开启 | 开关默认关；开启时约束字段必填且进输入 |
 
 > T3.1 - T3.3（报告摘要 / 周报月报 + 数字守卫 / 报告页）已于 2026-10-15 完成，见 §2.7。
@@ -341,7 +361,8 @@
 > 训练块补 RPE 均值与 ≥8 条数、有氧估算消耗、饮食块补钠超标天数与纤维达标天数、
 > `previousDigest` 带上上一期数字；报告页已显示这些数字。口径与三处有意收窄见设计文档 §6.4.1。
 > **T3.7（每日指导 A 级）已于 2026-10-16 完成**，见 §2.10；契约口径与九条落地约定见设计文档 §6.4.2 的「实现补充」。
-> 阶段 3 现在只剩 **T3.5 校准向导**与 **T3.8 B 级推荐**（后者默认关、开启前必须先恢复约束字段）。
+> **T3.5（校准向导）已于 2026-10-16 完成**，见 §2.11；契约口径见设计文档 §6.7 的「实现补充」。
+> 阶段 3 现在只剩 **T3.8 B 级推荐**（默认关、开启前必须先恢复约束字段）。
 
 ### 4.2 阶段 4：数据治理与打磨（P1-P2）
 
@@ -365,7 +386,7 @@ app/
     domain/       纯计算与领域类型 —— 无 IO、不依赖 Vue / Dexie（对拍测试直接打这里）
     data/         Dexie schema（db.ts）、仓储层（repositories/）、种子数据（seed/）
     llm/          OpenAI 兼容客户端、错误分类、文本抽取、任务注册表与流水线、tasks/
-    application/  用例层：本地优先、业务校验、落库编排（foodLibrary / foodResolve / logParse / queue / report）
+    application/  用例层：本地优先、业务校验、落库编排（foodLibrary / foodResolve / logParse / queue / report / coach / calibration）
     io/markdown/  记录文件（Markdown）解析 —— 导入与对拍共用
     pages/        页面；components/ 共享组件；router/ 路由；store/ Pinia 会话态
   tests/          单元 / 对拍 / 组件测试（fixtures/ 与 helpers/ 同级）
@@ -399,6 +420,9 @@ app/
 | 每日指导（A 级） | `application/coach.ts` `buildCoachContext` / `generateAdvice` / `markAdviceAdopted`；契约在 `llm/tasks/coach.ts` |
 | 指导的三道本地闸门 | `domain/coach.ts` `resolveBasisPath` / `applyBasisGate` / `applyCoachCoverageGate` / `flagCoachNumbers` / `coachFingerprint` |
 | 指导页面 | `pages/CoachPage.vue`（`/coach`）；今日页的常驻卡片在 `pages/TodayPage.vue` |
+| 校准向导（本地数字 + AI 复核） | `application/calibration.ts` `buildCalibrationReviewInput` / `reviewCalibration`；契约在 `llm/tasks/calibration.ts` |
+| 校准门禁（样本 / 频率 / 幅度） | `domain/calibrationReview.ts` `applyCalibrationReviewGates` / `flagCalibrationNumbers` / `localProposalOf` |
+| 校准页面与入口 | `pages/CalibrationPage.vue`（`/calibration`）；目标页顶部常驻卡片在 `pages/TargetsPage.vue` |
 | 落库前拍平响应式对象 | `data/plain.ts` `toPlain`（所有仓储写入都过它） |
 | 记录文件解析 | `io/markdown/record.ts` |
 | 路由表 | `app/src/router/index.ts`（权威表格在 `docs/pwa-design.md` §8.1） |
@@ -411,7 +435,7 @@ app/
 ```bash
 npm install
 npm run dev       # 本地开发服务器
-npm test          # 单元 / 对拍 / 组件测试（33 文件 / 321 项）
+npm test          # 单元 / 对拍 / 组件测试（38 文件 / 370 项）
 npm run build     # vue-tsc 类型检查 + 生产构建（产物 dist/）
 npm run preview   # 预览构建产物 —— 测 PWA 行为请用这个，不要用 dev
 npm run seed      # 从 ../data/foods.csv 重新生成内置食物库种子
@@ -523,9 +547,8 @@ npm run build
 2. ~~T2.4 队列执行器 + T2.7 图片降级引导 + T0.2 安装引导~~ —— 2026-10-15 已完成（见 §2.5）。
 3. ~~T3.1 → T3.2 → T3.3~~ —— 2026-10-15 已完成（见 §2.7）。
 4. ~~T3.6 摘要 v2~~ → ~~T3.7 每日指导（A 级）~~ —— 2026-10-16 已完成（见 §2.10）。
-5. **T3.5 校准向导** —— 校准页与 `calibrations` 链路已经打通，报告页也已经能给出（并拦住）校准建议，
-   向导只需把「采纳建议」接到 `applyCalibration`。`domain/reportDigest.ts` 的 `buildDigest` 可以直接复用。
-   （T3.4 推荐已取消，见 §2.9。）
+5. ~~T3.5 校准向导~~ —— 2026-10-16 已完成（见 §2.11）：入口在目标页顶部常驻卡片，页面 `/calibration`，
+   数字复用报告的 28 天摘要，三道本地门禁 + 采纳才 `applyCalibration`。（T3.4 推荐已取消，见 §2.9。）
 6. **T4.1 → T4.2 → T4.3** —— 导入导出与快照是「数据在本地」的安全网，建议在报告功能成型后尽快补上。
 7. **T4.4 - T4.6** 收尾打磨。**T3.8（B 级推荐）**放最后：它默认关，且开启前必须先恢复约束字段。
 
@@ -533,7 +556,7 @@ npm run build
 
 ## 10. 交接自检清单
 
-- [ ] `cd app && npm install && npm test`（36 文件 / 349 项；`quick-log-page.spec.ts` 偶发失败时重跑一次即可，见 §8）
+- [ ] `cd app && npm install && npm test`（38 文件 / 370 项；`quick-log-page.spec.ts` 偶发失败时重跑一次即可，见 §8）
 - [ ] `npm run build` 通过
 - [ ] `npm run preview` 能打开今日页，底部 tab 来回切换不卡死
 - [ ] 今日页顶部有一次性的「装到主屏幕」提示，点「知道了」后刷新不再出现
@@ -546,6 +569,11 @@ npm run build
 - [ ] `/coach` 「将要发送的内容」里能看到 JSON（含 token 估算），关掉「睡眠」后 `avgSleepHours` 消失、`sleepDays` 归零
 - [ ] 在 `/coach` 给一条建议点「采纳」→ 第二天生成的输入里 `history.advice` 带上它（可在预览里看到）
 - [ ] 只记 1-2 天就生成指导：标题带「样本不足」，且没有「调整目标」类建议
+- [ ] `/targets` 顶部有常驻的「校准向导」入口（空档案 / 空目标时也在）→ 进 `/calibration` 能看到实测 TDEE、
+      近 4 周均线、平均摄入与达标率、当前目标、距上次校准
+- [ ] 没配模型时 `/calibration` 不装死：本地数字与本地建议照常，生成按钮禁用并引导去 `/settings/model`
+- [ ] 记满 2 周以上再生成校准建议：能看方向 / 幅度 / 理由，点「采纳」后目标更新、校准记录多一行并回 `/targets`
+- [ ] 只记几天就生成校准建议：显示「样本不足」等门禁原因，且**没有**「采纳」按钮
 - [ ] `/trend` 切 7 / 14 / 28 天，URL 里的 `?days=` 跟着变；空区间显示「未记录」而不是 0
 - [ ] `/profile` 填一份档案 → `/targets` 用首次估算写入目标，并在「校准记录」里看到一行
 - [ ] 在 `/targets` 把热量改掉 200 kcal：确认卡片要出现「超过 ±150 kcal」与「样本可能不足」提示

@@ -614,6 +614,21 @@ interface LlmTask<In, Out> {
 
 **本地处理**：`\|deltaKcal\| > 150` 或距上次校准 <14 天时，降级为「不建议现在调整」并说明原因（FR-904 / FR-905）。
 
+**实现补充（2026-10-16，已实现）**：落点 `llm/tasks/calibration.ts`（契约）+ `domain/calibrationReview.ts`
+（本地门禁）+ `application/calibration.ts`（拼输入 / 调模型）+ `pages/CalibrationPage.vue`（`/calibration`）。
+入口是目标页顶部那张常驻的「校准向导」卡片。下面几处是把契约落成口径时定的，交接时不要改回去。
+
+| 点 | 口径 | 为什么 |
+| --- | --- | --- |
+| 输入的数字从哪来 | 复用报告的 28 天摘要（`buildReportDigest` 的同一套聚合）：实测 TDEE 与样本量、体重均线 / 变化率、平均摄入与达标率、当前目标 | 校准要判的就是「这 4 周的账」，与报告同源才能解释得清为什么两边给的建议一样 |
+| 覆盖率的分母 | **28 个自然日**（没记录的天也占位），不是「有记录的天数」 | 否则只记 3 天也会被算成 100%，样本门禁形同虚设（FR-708） |
+| 幅度门禁在本地再判一次 | 模型回的 `deltaKcal` 超过 ±150 kcal 时，在本地拦下并归零（不是只写进提示词让模型自觉） | FR-904 是安全边界；`proposeCalibration` 的限幅只保护本地建议，模型完全可以回一个 −400 |
+| 拦下即归零 | 任何一道门禁拦下后，`recommended` 置 false、`deltaKcal` 归 0、`direction` 置「不变」，原幅度写进提示文本 | 与报告 `applyCalibrationGate` 一致：作废的建议不该留在结构化字段里等着被谁读走 |
+| 三条自洽修正 | ① 说「建议调整」却给 0 幅度 → 当成不建议调整；② 方向与幅度符号不一致 → 以幅度为准；③ TDEE 样本 < 7 天 / 覆盖率 < 50% 与频率、幅度共用一道闸门 | 数字是硬事实、词不是；同一批门禁一次判完，界面只需要看 `blocked` 一个布尔 |
+| 频率门禁读哪个字段 | 优先用最近一行校准记录的 `date`（算 `daysSince`），没有记录时退回 `targets.lastCalibrated`（幅度按 0 记） | `applyCalibration` 本来就同时写记录与 `lastCalibrated`；退回是为了兼容只有标记的老数据 |
+| 向导**不落库** | AI 复核结果只存在页面内存里；只有用户点「采纳」才 `applyCalibration`（写目标 + 留一行校准记录） | 校准是一次性动作：没有一个「待复核」状态需要用户回来收尾，也就没有过期记录要清理 |
+| 没配模型 / 模型失败 | 本地数字与 `proposeCalibration` 的本地建议照常可用，生成按钮禁用并引导去 `/settings/model` | §9.3 降级矩阵：校准的数值区本身就不依赖模型 |
+
 ### 6.8 校验、重试与降级流水线
 
 ```
@@ -859,6 +874,7 @@ interface LlmTask<In, Out> {
 | `/reports` / `/reports/:id` | 报告列表 / 详情 | 待生成报告置顶 |
 | `/foods` | 食物库 | 来源筛选、疑似重复提示 |
 | `/targets` | 目标 | 校准记录表 |
+| `/calibration` | 校准向导 | 本地数字 + AI 复核；幅度 / 频率 / 样本门禁，采纳才写目标（§6.7 / T3.5） |
 | `/profile` | 档案 | |
 | `/settings` | 设置 | 提醒、单位、外观、不再追问 |
 | `/settings/model` | 模型设置 | URL / token / 连通性 / 用量 |
@@ -1155,7 +1171,7 @@ scripts/
 | T3.2 | `report.weekly` / `report.monthly` + 数字守卫 + 数值/文字分区渲染 | ✅ 2026-10-15：`llm/tasks/report.ts` + `domain/reportGuard.ts`；守卫只放行「摘要里的数 / 0-100% 百分比 / 天周组常量」，其余标「待核对」；`report-generate.spec.ts` 覆盖 |
 | T3.3 | 报告列表、历史版本、重新生成、人工编辑留痕 | ✅ 2026-10-15：`ReportsPage.vue` + `ReportDetailPage.vue`；重新生成新建记录、旧版本保留；人工编辑写 `editedByUser`，数值区不可编辑 |
 | T3.4 | ~~`plan.training` / `plan.meal` + 本地复算~~ | ❌ **2026-10-16 决定不做推荐功能**（连带 §6.5 / §6.6 只作历史记录，`/plan` 路由已删除，档案里与推荐相关的字段也已下线） |
-| T3.5 | `calibration.review` + 校准向导（幅度与频率门禁） | 超出 ±150 kcal 被拦下 |
+| T3.5 | `calibration.review` + 校准向导（幅度与频率门禁） | ✅ 2026-10-16 完成：`CalibrationPage.vue`（`/calibration`）+ `llm/tasks/calibration.ts` + `domain/calibrationReview.ts`；三道本地门禁（样本 / 频率 / 幅度，超出 ±150 kcal 被拦下且不提供采纳）、向导不落库、采纳才 `applyCalibration`。口径见 §6.7 的「实现补充」 |
 | T3.6 | 摘要 v2（睡眠 / 精力 / 酸痛、RPE、有氧消耗、钠与纤维、上一期数字） | ✅ 2026-10-16 完成：口径与三处有意收窄见 §6.4.1；报告页已显示这些数字 |
 | T3.7 | **`coach.daily` 每日指导（A 级，P0）** + `/coach` 页 + `adviceLog`（schema v3） | ✅ 2026-10-16 完成：依据校验（NFR-13）、样本门禁、数字守卫与报告同源；同日缓存与手动刷新；采纳 / 不采纳进 `adviceLog`；没配模型时降级为本地缺口提示。口径见 §6.4.2 的「实现补充」 |
 | T3.8 | B 级生成式推荐（可选开关，默认关） | ⬜ 未开始：启用前必须先恢复忌口 / 过敏 / 可用器材 / 每餐时间四个约束字段（FR-1003） |

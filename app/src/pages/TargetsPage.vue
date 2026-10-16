@@ -436,6 +436,16 @@ const carbPerKg = computed(() => {
   <section class="page" :data-ready="loaded ? 'true' : 'false'">
     <AppHeader title="目标" subtitle="这里只维护目标值；改任何一项都会写一行校准记录。" back />
 
+    <!-- 常驻入口：校准向导不依赖「有没有目标 / 有没有读库完成」，任何状态下都给得出去 -->
+    <div class="card">
+      <h2 class="card-title">校准向导</h2>
+      <p class="muted">
+        把实测 TDEE 与近 4 周的记录交给本地算 + 模型复核一次，过一遍样本 / 频率 / 幅度门禁；
+        采纳才会写目标并留一行校准记录。
+      </p>
+      <van-button type="primary" block @click="router.push('/calibration')">打开校准向导</van-button>
+    </div>
+
     <div v-if="!loaded" class="card">
       <p class="muted">读取中…</p>
     </div>

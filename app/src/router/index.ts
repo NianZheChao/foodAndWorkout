@@ -26,6 +26,12 @@ export const routes: RouteRecordRaw[] = [
   },
   { path: '/foods', name: 'foods', component: Placeholder, meta: { title: '食物库', spec: 'M4 FR-400' } },
   { path: '/targets', name: 'targets', component: () => import('@/pages/TargetsPage.vue'), meta: { title: '目标', spec: 'M9 FR-900' } },
+  {
+    path: '/calibration',
+    name: 'calibration',
+    component: () => import('@/pages/CalibrationPage.vue'),
+    meta: { title: '校准向导', spec: 'M9 FR-903~905 / §6.7' }
+  },
   { path: '/profile', name: 'profile', component: () => import('@/pages/ProfilePage.vue'), meta: { title: '档案', spec: 'M10 FR-1000' } },
   { path: '/settings', name: 'settings', component: Placeholder, meta: { title: '设置', spec: 'M16 FR-1600' } },
   { path: '/settings/model', name: 'settings-model', component: () => import('@/pages/ModelSettingsPage.vue'), meta: { title: '模型设置', spec: 'M13 FR-1300' } },

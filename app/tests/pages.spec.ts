@@ -62,6 +62,7 @@ describe('页面挂载（阶段 1 已落地的路由）', () => {
     '/reports',
     '/reports/rep_missing',
     '/targets',
+    '/calibration',
     '/profile',
     '/settings/model'
   ])(
