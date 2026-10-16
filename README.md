@@ -60,7 +60,11 @@ npm run deploy -- --dry-run   # 只构建与准备，看清会动哪些文件
 1. **HTTPS**：Service Worker 与「添加到主屏」都要求安全上下文；局域网 `http://192.168.x.x` 装不上。
 2. **路径前缀与 base 一致**：Vite 的资源地址由 `base` 决定（`npm run deploy -- --base=/`、或
    `npm run build -- --base=/xxx/`）。manifest 与 Service Worker 里的地址全是相对路径，
-   scope / start_url / precache 会跟着站点路径自动对上，**不需要再改 `vite.config.ts`**。
+   路由的 base 取自 `import.meta.env.BASE_URL`，所以 scope / start_url / precache / 站内跳转
+   都会跟着站点路径自动对上，**不需要再改 `vite.config.ts`**。
+   **但 `createWebHistory()` 一定不能留空**：留空时 vue-router 按 `/` 算（`index.html` 里没有
+   `<base>` 标签），子路径部署下站内地址会跑到站根上去 —— 刷新一下就被站根上别人的站点接走了。
+   这条由 `app/tests/router-base.spec.ts` 守着。
 3. **SPA 回退**：从主屏冷启动会直接请求 `/today`，服务器要把未知路径回退到 `index.html`。
    GitHub Pages 靠上传的 `404.html`（部署脚本自动生成）；Netlify / Cloudflare Pages 在
    `_redirects` 里写一行 `/* /index.html 200`。

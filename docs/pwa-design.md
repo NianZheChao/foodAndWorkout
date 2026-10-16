@@ -1019,6 +1019,12 @@ interface LlmTask<In, Out> {
 `app/src/router/index.ts` 的路由表与它一一对应（`tests/navigation-reachability.spec.ts` 逐条比对）。
 **新增页面必须在这里登记**，否则「页面上没有同级入口」这种看不出来的毛病会直接变成测试失败。
 
+**路由表按构建时的 `base` 挂载**：`createWebHistory(import.meta.env.BASE_URL)`（2026-10-16 修，见 §12「分发」）。
+`index.html` 里没有 `<base>` 标签，`createWebHistory()` 一旦留空就按 `/` 算 —— 子路径部署下应用以为自己
+长在站根，`router.push('/today')` 会把地址栏改成 `https://<owner>.github.io/today`（`pushState` 不刷新，
+所以页面内跳转与本地开发都看不出来），一刷新就请求到了站根上别人的站。
+`tests/router-base.spec.ts` 把 `BASE_URL` 换成 `/foodAndWorkout_deploy/` 真跑一遍守这条。
+
 **五个域（= 底部 tab）**，覆盖全部路由，不留孤岛：
 
 | 域（tab） | 域根 | 域内页面 |
@@ -1380,7 +1386,9 @@ scripts/
 分发：产物托管在独立仓库（`npm run deploy`，见根 `README.md` 的「部署与分发」）。路径前缀只由构建时的
 `base` 决定 —— manifest 的 `scope` / `start_url` / 图标与 Workbox 的 `navigateFallback` 全写**相对**地址，
 所以根路径与子路径（GitHub Pages 项目页）共用同一份配置；`404.html` 由部署脚本从 `index.html` 复制，
-用来做 GitHub Pages 的 SPA 回退。
+用来做 GitHub Pages 的 SPA 回退。**路由的 base 同样来自构建时的 `base`**
+（`createWebHistory(import.meta.env.BASE_URL)`，2026-10-16 修）：这一条不在「相对地址」的覆盖范围内，
+漏了就会把使用者从项目页送到站根上别人的站（见 §8.1 与 `tests/router-base.spec.ts`）。
 
 ---
 
@@ -1451,6 +1459,8 @@ scripts/
 | T4.7 | **界面与菜单重构：导航树 + 五域 IA**（2026-10-16） | ✅ 2026-10-16 完成：新增 `app/src/app/nav.ts`（导航树，唯一数据源）与页头自动渲染的域导航条 / 面包屑（`components/AppHeader.vue`）；底部 tab 由「今日 / 记录 / 趋势 / 报告 / 设置」改为**五个域**「今日 / 记录 / 分析 / 我的 / 设置」（覆盖全部路由，消灭七个「不高亮」的孤岛页）；新开「我的」域根 `pages/MePage.vue`（`/me`：档案与目标现状 + 本机数据）；`/settings` 按主题分四组、把「档案 / 数据 / 关于」挪去「我的」；「记录」域丢掉自带的 `van-tabs`、今日页拆掉「更多」卡片（入口统一由导航条给）。验收：`tests/navigation-reachability.spec.ts`（路由表 ⇄ 导航树一一对应 / 每页只归一个域 / 写死的跳转都指向存在的路由）、`tests/pages.spec.ts`（每个页面的 tab 高亮 + 导航条 + 面包屑）、`tests/me-page.spec.ts`。口径见 §8.1 |
 
 | T4.8 | **暗色缺陷统一修复 + 导航去重 + 食物库卡片下线 + 报告可删**（2026-10-16） | ✅ 2026-10-16 完成：(1) **颜色只写 token** —— 新增 `--warn-soft` / `--flag-soft` / `--on-danger`，修掉提醒卡片、「待核对」数字、危险按钮三处在深色下的对比度问题，并由 `tests/theme-tokens.spec.ts` 静态守住（页面里再出现颜色字面量就失败）；图表改走 `app/chartTheme.ts` 的两套取值 + `useResolvedTheme()`，连 ECharts 默认的白底提示框一起修。(2) 「记录」域根改为饮食面板 `/log/diet`（旧地址 `/log` 转过来），页头不再并排出现「记录」「饮食」两颗指向同一页的格子，并给 `NavDomain` 加了 `rootLabel`。(3) 「疑似重复」分组卡片下线（理由见 §4.2）。(4) 周报 / 月报可在列表与详情删除（`removeReport`，只做二次确认）。口径见 §4.2 / §8.1 / §8.5 |
+
+| T4.9 | **部署路径缺陷：子路径下路由 base 丢失**（2026-10-16） | ✅ 2026-10-16 完成：`createWebHistory()` 原来没传 base，vue-router 只认 `<base href>` 或 `/`，而 `index.html` 里没有 `<base>` 标签 —— GitHub Pages 项目页（`/foodAndWorkout_deploy/`）下应用以为自己长在站根，站内地址全成了 `/today` 这种跨到站根的路径；`pushState` 不刷新，所以界面照常能用，但**在子路径下刷新就会被用户站（Hexo 博客）的 404 页接走**。改为 `createWebHistory(import.meta.env.BASE_URL)`，同一份产物在根路径与子路径下都对。验收：`tests/router-base.spec.ts`（`vi.stubEnv` 换 `BASE_URL` + `resetModules` 重新 import 路由，断言 `history.base` 与所有站内 href 都落在应用目录内；改回留空即失败）。口径见 §8.1 / §12 |
 
 ---
 ## 14. 风险与对策

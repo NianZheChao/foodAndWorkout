@@ -158,8 +158,15 @@ describe('一句话记录：草稿 → 澄清 → 落库', () => {
     expect(egg?.computed.kcal).toBeCloseTo(144 * 2.5, 5)
     expect(egg?.pendingFlag).toBeUndefined()
 
-    // 草稿落库后即清除
-    expect(await listOpenDrafts(DATE)).toHaveLength(0)
+    // 草稿落库后即清除：删除草稿是 `commit()` 的最后一步独立写（`deleteDraft`），
+    // 上面那条 `waitFor` 只等到「待补全」标完 —— 并行跑时这一拍读事务仍可能开在删除提交之前，
+    // 所以这条也要轮询等（同 §8 记的那类竞态）。
+    await vi.waitFor(
+      async () => {
+        expect(await listOpenDrafts(DATE)).toHaveLength(0)
+      },
+      { timeout: 5000 }
+    )
     // 算不出的三条都明确提示「待补全」，记录本身照写不误
     expect(wrapper.text()).toContain('待补全')
   })

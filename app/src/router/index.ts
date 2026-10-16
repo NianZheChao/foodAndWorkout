@@ -77,7 +77,15 @@ export const routes: RouteRecordRaw[] = [
   { path: '/settings/model', name: 'settings-model', component: () => import('@/pages/ModelSettingsPage.vue'), meta: { title: '模型设置', spec: 'M13 FR-1300' } }
 ]
 export const router = createRouter({
-  history: createWebHistory(),
+  /**
+   * base 必须显式取 Vite 的 `BASE_URL`，**不能**留空：
+   * 留空时 vue-router 只认 `<base href>` 或 `/`，而 index.html 里没有 `<base>` 标签 ——
+   * 于是子路径部署（GitHub Pages 项目页 `/<repo>/`）下路由以为自己长在站根：
+   * `router.push('/today')` 会把地址栏改成 `https://<owner>.github.io/today`（`pushState` 不刷新，
+   * 所以应用看着还能用），一刷新就请求到了**用户站根**上，被 Hexo 博客的 404 页接走。
+   * 传 `BASE_URL` 后，同一份产物在根路径（`/`）与子路径（`/foodAndWorkout_deploy/`）下都对。
+   */
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes,
   scrollBehavior: () => ({ top: 0 })
 })

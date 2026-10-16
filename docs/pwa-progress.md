@@ -5,8 +5,8 @@
 
 - 最后更新：2026-10-16
 - 应用版本：`0.1.0`（`app/package.json`）
-- 分支 / 最近提交：`main` / `feat: 界面与菜单重构（T4.7）：导航树 `app/nav.ts` + 五个域 + 「我的」页`
-- 质量基线（2026-10-16 重构后实测）：`npm test` 61 文件 / 560 项（`npm run build` 随之通过）；全量并行跑**已不再有偶发失败**（两条老竞态已按 §8 修掉，真跑 Python 的那条也给了 30 秒超时）；`workspace-script.spec.ts` 没装 Python 时整组跳过；`npm run build`（含 `vue-tsc -b` 类型检查，**测试文件也在类型检查范围内**）通过
+- 分支 / 最近提交：`main` / `fix: 部署到子路径时路由 base 丢失，刷新不再跳到站根（T4.9）`
+- 质量基线（2026-10-16 重构后实测）：`npm test` 62 文件 / 562 项（`npm run build` 随之通过）；全量并行跑**已不再有偶发失败**（两条老竞态已按 §8 修掉，真跑 Python 的那条也给了 30 秒超时）；`workspace-script.spec.ts` 没装 Python 时整组跳过；`npm run build`（含 `vue-tsc -b` 类型检查，**测试文件也在类型检查范围内**）通过；新增 `tests/router-base.spec.ts`（子路径部署护栏，见 §2.25）
 
 ## 0. 三十秒速览
 
@@ -29,7 +29,7 @@
 整份计划的最后一件 T3.8（B 级生成式推荐，默认关）也在 §2.19（安全边界）与 §2.20（两个任务 + `/plan` 页）
 落地了 —— **阶段 0 到阶段 4 全部完成，没有欠账**；计划收口后又补了两件「怎么用起来」的事：
 token 预算告警（T2.5，见 §2.21）与**分发**（`npm run deploy` 发到 GitHub Pages，见 §2.22）；随后又做了一轮**界面与菜单重构**（T4.7，见 §2.23）—— 底部 tab 由「今日 / 记录 / 趋势 / 报告 / 设置」变成五个域「今日 / 记录 / 分析 / 我的 / 设置」，每个页面都有统一的树状路径；重构之后又按使用者反馈修了一轮（T4.8，见 §2.24）：**深色模式里写死颜色的地方全部改成 token**（并加了静态守卫）、「记录」域根改成饮食面板（页头不再并排出现「记录」「饮食」两颗指向同一页的格子）、下线「疑似重复」卡片、周报月报可删。B 级推荐按 FR-1003 保持默认关，要到
-「设置 → 生成式推荐」显式打开、且档案里四项约束填齐之后才会出现「今天练什么 / 今天吃什么」。
+「设置 → 生成式推荐」显式打开、且档案里四项约束填齐之后才会出现「今天练什么 / 今天吃什么」。 之后又修了一处**部署路径缺陷**（T4.9，见 §2.25）：路由 base 原来留空，GitHub Pages 项目页下站内地址会越出应用目录 —— 在子路径里一刷新就被用户站（博客）接走；现在 base 取 `import.meta.env.BASE_URL`，并由 `tests/router-base.spec.ts` 守住。
 
 ## 1. 文档地图
 
@@ -767,6 +767,36 @@ T4.4 留下的那笔欠账：模型给的六项数值是**估算**，手里有�
 `tests/food-admin.spec.ts` / `tests/foods-page.spec.ts`（删掉「疑似重复」相关的用例，概况断言保留）。
 口径写在设计文档 §4.2 / §8.1 / §8.5 / §12 / §13（T4.8）。
 
+### 2.25 T4.9 落地：部署路径缺陷 —— 子路径下路由 base 丢失（2026-10-16）
+
+使用者反馈：**在发布页的某些步骤刷新，会被跳到 `https://nianzhechao.github.io/`** —— 那是他自己的
+Hexo 博客（用户站），与本应用无关。
+
+**根因不在托管，在路由的 base**。`app/src/router/index.ts` 当时写的是 `createWebHistory()`，**没传参数**；
+vue-router 只在 `<base href>` 或（两者都没有时）`/` 上取 base，而 `index.html` 里没有 `<base>` 标签。
+于是子路径部署（GitHub Pages 项目页 `/<repo>/`）下，应用以为自己长在**站根**：
+
+- 首屏落在 `/foodAndWorkout_deploy/` 上时，路由看到的是 `/foodAndWorkout_deploy/` 这个路径，匹配不到任何路由；
+- 点底部 tab → `router.push('/today')` → `pushState` 把地址栏改成 `https://nianzhechao.github.io/today`。
+  **`pushState` 不刷新页面**，所以界面照常渲染、功能看着全对，只有地址栏跑到了站外；
+- 一旦在这一步**刷新**（或从主屏图标冷启动到 `start_url`），浏览器真的去请求 `/today` —— 用户站上没这个
+  路径，GitHub Pages 拿那边博客的 `404.html` 回应，博客的 404 页又把访客导向站根。这就是使用者看到的现象。
+
+**修法**：`history: createWebHistory(import.meta.env.BASE_URL)` —— base 跟着构建时的 `base` 走，
+`npm run deploy` 已经在传 `--base=/foodAndWorkout_deploy/`，其余地方一处都不用动；根路径部署
+（自有域名 / 本地开发，base 就是 `/`）行为不变。
+
+**为什么之前没发现**：本地 `npm run dev` / `npm run preview` 的 base 就是 `/`（Vite 默认），
+「留空」与「传 `BASE_URL`」在这里完全等价；页面内跳转又都是 SPA 跳转，不刷新就看不出地址跑出去了。
+这类缺陷只在「子路径 + 刷新」这个组合下暴露。
+
+**验收**：`tests/router-base.spec.ts`（新增，2 项）—— 用 `vi.stubEnv('BASE_URL', '/foodAndWorkout_deploy/')`
+配 `vi.resetModules()` 重新 import 路由模块（base 在模块顶层 `createRouter` 时就定死了，必须先改环境再 import），
+断言 `history.base === '/foodAndWorkout_deploy'`、`resolve('/today').href === '/foodAndWorkout_deploy/today'`，
+以及底部五个 tab 与二级页的 href **全部**落在 `/foodAndWorkout_deploy/` 之内；另有一条根路径部署的对照用例。
+把路由改回 `createWebHistory()` 这条用例立刻失败（`expected '' to be '/foodAndWorkout_deploy'`），已实测确认。
+口径写在设计文档 §8.1 / §12 / §13（T4.9）；README 的「换托管」一节也补上了这条 ——
+路径前缀不只管资源与 manifest，**路由 base 也在里面**。
 ## 3. 部分完成：有明确缺口（优先补这些）
 
 | 编号 | 已实现 | 缺什么 | 建议落点 |
@@ -913,6 +943,7 @@ app/
 | 路由表 | `app/src/router/index.ts`（权威表格在 `docs/pwa-design.md` §8.1） |
 | 导航树（域 → 页面，T4.7） | `app/src/app/nav.ts` `navDomains` / `navTabs` / `domainOf` / `navLocation` —— **新增页面先登记这里**，否则 `navigation-reachability.spec.ts` 会拦下来（域根那颗格子的文案用 `rootLabel` 单给，记录域是「饮食」） |
 | 页头的域导航条与面包屑 | `components/AppHeader.vue`（按 `navLocation` 自动渲染，页面不写入口）；样式基元在 `src/style.css` |
+| 部署路径与路由 base（T4.9） | `src/router/index.ts` 的 `createWebHistory(import.meta.env.BASE_URL)` —— **不要留空**（留空按 `/` 算，子路径部署下站内地址会跑到站根）；护栏 `tests/router-base.spec.ts` |
 | 底部 tab 匹配规则 | `app/src/App.vue`（`tabs = navTabs`，高亮走 `domainOf(route.path)`） |
 
 ## 6. 环境与常用命令
@@ -922,7 +953,7 @@ app/
 ```bash
 npm install
 npm run dev       # 本地开发服务器
-npm test          # 单元 / 对拍 / 组件测试（61 文件 / 560 项）
+npm test          # 单元 / 对拍 / 组件测试（62 文件 / 562 项）
 npm run build     # vue-tsc 类型检查 + 生产构建（产物 dist/）
 npm run preview   # 预览构建产物 —— 测 PWA 行为请用这个，不要用 dev
 npm run deploy    # 构建（GitHub Pages 的 base）+ 推到部署仓库（§2.22；--dry-run 可先看）
@@ -1002,6 +1033,11 @@ npm run build
 - **页面里有「读库 → 再读库」的链式 await 时，`flushPromises()` 挡不住 fake-indexeddb 的宏任务**：
   要么用 `vi.waitFor` 包住断言，要么给页面加 `data-ready` 标记再等它变 true（目标页 / 档案页用的是后者）。
   只在库里断言、不等界面刷新，会出现「库里有值但按钮还没渲染」的假失败。
+- **「上一步断言等到了」不等于「最后一步写完了」**（2026-10-16 抓到第三处竞态）：`quick-log-page.spec.ts`
+  的「回答澄清后用回答的克数落库」用例，先前用 `vi.waitFor` 等到了 4 条记录与 3 个「待补全」标记，紧接着就
+  同步断言「草稿已清除」—— 而删草稿是 `store/draft.ts` 的 `commit()` 里最后一步独立写（`deleteDraft`），
+  读事务仍可能开在它提交之前，并行跑时约 1/4 概率假失败（`expected [ { …(17) } ] to have a length of +0 but got 1`）。
+  规矩：**每一条「后面才发生」的写都要自己等一次**，别指望前面的 `waitFor` 顺带覆盖。
 - **`showDialog` 在 jsdom 里没人点确认，promise 永远不 resolve**（组件测试会挂住）。要测确认后
   的行为，就 `vi.mock('vant', ...)` 只替掉 `showDialog`，其余（`van-button` 等真实组件）原样透传；
   `data-page.spec.ts` 的回滚用例是现成例子。
@@ -1075,6 +1111,12 @@ npm run build
   `app/theme.ts` 的 `useResolvedTheme()` 跟着 `data-theme` 重画；只给 series 上色、
   不管 tooltip / 轴标签，深色下照样会露出白底与看不清的深灰字。
 
+- **子路径部署时路由 base 必须显式传 `import.meta.env.BASE_URL`**（2026-10-16 真事故，使用者报「刷新后被
+  跳到博客首页」）：`createWebHistory()` 留空时只认 `<base href>` 或 `/`，而 `index.html` 里没有 `<base>`
+  标签，于是应用在 `/foodAndWorkout_deploy/` 下以为自己长在站根 —— 站内地址全变成 `/today` 这种跨到站根的
+  路径。`pushState` 不刷新页面，所以**本地开发（base 就是 `/`）与页面内跳转都看不出来**，只有在子路径下
+  刷新（或从主屏冷启动）才暴露，而那时的请求会打到用户站根、被别人家的 404 页接走。护栏是
+  `tests/router-base.spec.ts`（`vi.stubEnv` 换 `BASE_URL` + `resetModules` 重新 import 路由）。
 ## 9. 建议的推进顺序
 
 1. ~~T1.6 趋势页 + M9 目标页 + M10 档案页~~ —— 2026-10-15 已完成（见 §2.4），P0 主链路已闭环。
@@ -1111,9 +1153,10 @@ npm run build
 
 ## 10. 交接自检清单
 
-- [ ] `cd app && npm install && npm test`（61 文件 / 560 项；`workspace-script.spec.ts` 那条真跑 Python 的用例要给足超时，见 §8）
+- [ ] `cd app && npm install && npm test`（62 文件 / 562 项；`workspace-script.spec.ts` 那条真跑 Python 的用例要给足超时，见 §8）
 - [ ] `npm run build` 通过
 - [ ] `npm run preview` 能打开今日页，底部 tab 来回切换不卡死
+- [ ] 发布在子路径（GitHub Pages 项目页 `/<repo>/`）时：打开站点 → 在站内某页**刷新**，地址栏仍在 `/<repo>/` 下（`tests/router-base.spec.ts` 已覆盖，这条是出事时的手工复核）
 - [ ] 任一页面的页头都有一条域导航条（本域全部页面 + 当前页高亮）；报告详情顶上还有 `分析 › 报告 › 报告详情` 的面包屑
 - [ ] 今日页顶部有一次性的「装到主屏幕」提示，点「知道了」后刷新不再出现
 - [ ] 底部 tab「设置」→ 点「模型设置」能进（**不依赖有没有待补全**）；任一设置页的页头导航条里也有「模型与 AI」
