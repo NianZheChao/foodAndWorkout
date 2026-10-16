@@ -1340,7 +1340,7 @@ scripts/
 | 任务 | 内容 | 验收 |
 | --- | --- | --- |
 | T0.1 | 工程脚手架（Vue3 + TS + Vite + Pinia + Router + Vant + Vitest） | ✅ 2026-10-15 完成：`npm test` 19 项通过，`npm run build` 通过（Playwright 留到 E2E 阶段接入） |
-| T0.2 | PWA 接入（manifest、SW、图标、安装引导） | ✅ 2026-10-15 完成：manifest/SW/图标已生成并在 preview 下验证可访问（安装引导待接） |
+| T0.2 | PWA 接入（manifest、SW、图标、安装引导） | ✅ 2026-10-15 完成：manifest/SW/图标已生成并在 preview 下验证可访问；安装引导是今日页顶部的一次性提示（`InstallHint.vue`，已装不提示、关掉记 localStorage），进度文档 §2.5 |
 | T0.3 | Dexie schema v1 + 迁移框架 + 仓储层 | ✅ 2026-10-15 完成：14 个对象存储、9 个仓储模块，单测覆盖索引/幂等/校准留痕/队列 |
 | T0.4 | 种子库存生成脚本（`foods.csv` → `foods.seed.ts`） | ✅ 2026-10-15 完成：生成 114 条，首次启动幂等写入，今日页可见条目数 |
 
