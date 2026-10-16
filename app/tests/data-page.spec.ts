@@ -13,6 +13,8 @@ import { db } from '@/data/db'
 import { buildExportPackage, checksumOf, serializeExport } from '@/io/exportPackage'
 import { updateDay } from '@/data/repositories/days'
 import { addIntake } from '@/data/repositories/intake'
+import { enqueue, markOp } from '@/data/repositories/pendingOps'
+import { saveModelConfig } from '@/data/repositories/modelConfig'
 
 // 回滚要先弹一个确认框：jsdom 里没人点它，`showDialog` 的 promise 永远不 resolve。
 // 只替掉这一个函数，`van-button` 之类的真实组件照旧。
@@ -172,5 +174,50 @@ describe('数据页：快照与回滚', () => {
     const day = await db.days.get(DATE)
     expect(day?.weightAmKg).toBe(75.1)
     expect(await db.intake.count()).toBe(1)
+  })
+})
+
+describe('数据页：离线队列与诊断信息（T4.6）', () => {
+  function card(wrapper: VueWrapper, title: string) {
+    const found = wrapper.findAll('.card').find((item) => item.text().includes(title))
+    if (!found) throw new Error(`找不到「${title}」卡片`)
+    return found
+  }
+
+  it('卡住的队列项能看到原因，也能「不再自动重试」', async () => {
+    const id = await enqueue('food.resolve', '测试食材')
+    await markOp(id, { status: 'needs-attention', attempts: 3, lastError: '模型给的值置信度低' })
+    const wrapper = await mountPage()
+
+    expect(card(wrapper, '离线队列').text()).toContain('1 条待处理')
+    expect(card(wrapper, '离线队列').text()).toContain('食物补全')
+    expect(card(wrapper, '离线队列').text()).toContain('需要你处理')
+    expect(card(wrapper, '离线队列').text()).toContain('模型给的值置信度低')
+    expect(card(wrapper, '离线队列').text()).toContain('已试 3 次')
+
+    await button(wrapper, '不再自动重试').trigger('click')
+    await vi.waitFor(() => {
+      expect(card(wrapper, '离线队列').text()).toContain('没有待处理的队列项')
+    })
+    // 「不再自动重试」只拿掉队列项，记录本身不动
+    expect(await db.pendingOps.count()).toBe(0)
+  })
+
+  it('诊断信息导出：给出文件名与内容摘要，token 不进页面也不进文件', async () => {
+    await saveModelConfig({
+      baseUrl: 'https://api.example.com/v1',
+      apiKey: 'sk-secret-value',
+      model: 'gpt-x',
+      enabled: true
+    })
+    const wrapper = await mountPage()
+    await button(wrapper, '导出诊断信息').trigger('click')
+
+    await vi.waitFor(() => {
+      expect(card(wrapper, '诊断信息导出').text()).toContain('thin-muscle-plan-diagnostics-')
+    })
+    expect(card(wrapper, '诊断信息导出').text()).toContain('schema v')
+    expect(wrapper.text()).not.toContain('sk-secret-value')
+    expect(HTMLAnchorElement.prototype.click).toHaveBeenCalled()
   })
 })

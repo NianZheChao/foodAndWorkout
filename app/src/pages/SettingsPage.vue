@@ -19,6 +19,7 @@ import {
   requestNotificationPermission,
   type NotificationSupport
 } from '@/application/notify'
+import { applyTheme, type ThemeChoice } from '@/app/theme'
 import { mergeReminders, reminderHint } from '@/domain/reminders'
 import type { ReminderSetting } from '@/domain/types'
 
@@ -30,8 +31,21 @@ const SUPPORT_TEXT: Record<NotificationSupport, string> = {
 }
 
 const reminders = ref<ReminderSetting[]>([])
+const weekStart = ref<1 | 7>(1)
+const theme = ref<ThemeChoice>('auto')
+const mutedFields = ref<string[]>([])
 const support = ref<NotificationSupport>('unsupported')
 const loaded = ref(false)
+
+const THEME_CHOICES: { value: ThemeChoice; label: string }[] = [
+  { value: 'auto', label: '跟随系统' },
+  { value: 'light', label: '浅色' },
+  { value: 'dark', label: '深色' }
+]
+
+const themeLabel = computed(
+  () => THEME_CHOICES.find((item) => item.value === theme.value)?.label ?? '跟随系统'
+)
 
 const supportText = computed(() => SUPPORT_TEXT[support.value])
 const permissionButton = computed(() => {
@@ -44,6 +58,9 @@ const permissionButton = computed(() => {
 async function load(): Promise<void> {
   const settings = await getSettings()
   reminders.value = mergeReminders(settings.reminders ?? [])
+  weekStart.value = settings.weekStart
+  theme.value = settings.theme
+  mutedFields.value = [...(settings.mutedFields ?? [])]
   support.value = notificationSupport()
   loaded.value = true
 }
@@ -66,6 +83,28 @@ async function askPermission(): Promise<void> {
     message: support.value === 'granted' ? '已授权：应用打开时会按时间通知' : '浏览器没有授权通知',
     position: 'bottom'
   })
+}
+
+/** 周起始日只影响「哪一天算周末」（周报提醒），报告口径固定周一，见 `application/reminders.ts`。 */
+async function setWeekStart(value: 1 | 7): Promise<void> {
+  weekStart.value = value
+  await saveSettings({ weekStart: value })
+  showToast({ message: value === 1 ? '一周从周一起算' : '一周从周日起算', position: 'bottom' })
+}
+
+/** 改外观要**立刻**生效：写库只保证下次打开是对的，这次得当场应用（FR-1606）。 */
+async function setTheme(value: ThemeChoice): Promise<void> {
+  theme.value = value
+  await saveSettings({ theme: value })
+  applyTheme(value)
+  showToast({ message: `外观：${themeLabel.value}`, position: 'bottom' })
+}
+
+/** 恢复追问：把字段从名单里拿掉（FR-1103「可随时恢复」）。 */
+async function restoreField(field: string): Promise<void> {
+  mutedFields.value = mutedFields.value.filter((item) => item !== field)
+  await saveSettings({ mutedFields: mutedFields.value })
+  showToast({ message: `「${field}」会重新开始追问`, position: 'bottom' })
 }
 </script>
 
@@ -112,6 +151,78 @@ async function askPermission(): Promise<void> {
     </div>
 
     <div class="card">
+      <h2 class="card-title">偏好</h2>
+      <div class="kv">
+        <span class="kv-key">单位</span>
+        <span class="kv-value">重量 kg · 能量 kcal</span>
+      </div>
+      <p class="muted">
+        只支持 kg 与 kcal，不换算成斤或 kJ：记录口径统一，导出给仓库脚本才算得对（FR-1606）。
+      </p>
+
+      <div class="kv">
+        <span class="kv-key">一周从哪天算起</span>
+        <span class="kv-value">{{ weekStart === 1 ? '周一' : '周日' }}</span>
+      </div>
+      <div class="choice-row">
+        <van-button size="small" :type="weekStart === 1 ? 'primary' : 'default'" @click="setWeekStart(1)">
+          周一
+        </van-button>
+        <van-button size="small" :type="weekStart === 7 ? 'primary' : 'default'" @click="setWeekStart(7)">
+          周日
+        </van-button>
+      </div>
+      <p class="muted">
+        它只决定「哪一天算这一周的最后一天」（周末那条周报提醒）；报告与趋势固定按周一起算，两边不冲突。
+      </p>
+
+      <div class="kv">
+        <span class="kv-key">外观</span>
+        <span class="kv-value">{{ themeLabel }}</span>
+      </div>
+      <div class="choice-row">
+        <van-button
+          v-for="item in THEME_CHOICES"
+          :key="item.value"
+          size="small"
+          :type="theme === item.value ? 'primary' : 'default'"
+          @click="setTheme(item.value)"
+        >
+          {{ item.label }}
+        </van-button>
+      </div>
+      <p class="muted">选「跟随系统」时，系统切换深色会立刻跟上；这里改了也是立刻生效。</p>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">不再追问的字段</h2>
+      <p class="muted">
+        「一句话记录」里这几个字段不会再被追问（FR-1103），随时可以放回去重新问。
+        名单也能在「档案」页自由编辑（一行一条）。
+      </p>
+      <p v-if="!mutedFields.length" class="muted">名单是空的：该问的都会问。</p>
+      <ul v-else class="muted-list">
+        <li v-for="field in mutedFields" :key="field">
+          <code>{{ field }}</code>
+          <van-button size="mini" plain @click="restoreField(field)">恢复追问</van-button>
+        </li>
+      </ul>
+      <div class="actions">
+        <van-button size="small" plain block @click="$router.push('/profile')">去档案页编辑名单</van-button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">关于与免责声明</h2>
+      <p class="muted">
+        数据存在哪、估算值的边界、什么时候该去看医生 —— 都写在里面（需求 §9 / FR-1608）。
+      </p>
+      <div class="actions">
+        <van-button size="small" plain block @click="$router.push('/about')">关于与免责声明</van-button>
+      </div>
+    </div>
+
+    <div class="card">
       <h2 class="card-title">模型</h2>
       <p class="muted">
         解析一句话 / 图片记录、生成报告与每日指导都走你自己配置的接口；token 只存本机，
@@ -122,16 +233,6 @@ async function askPermission(): Promise<void> {
       </div>
     </div>
 
-    <div class="card">
-      <h2 class="card-title">还没做的部分</h2>
-      <p class="muted">这些属于 T4.6，现在先把位置与需求编号写在这里，免得找不到入口：</p>
-      <ul class="hint-list">
-        <li>单位与周起始日：字段已存在，界面没做（FR-1601）</li>
-        <li>外观（浅色 / 深色 / 跟随系统）：字段已存在，界面没做（FR-1603）</li>
-        <li>「不再追问」名单：机制可用，入口暂时留在档案页（FR-1103）</li>
-        <li>免责声明与诊断信息导出：需求 §9 / FR-1608</li>
-      </ul>
-    </div>
   </section>
 </template>
 
@@ -178,5 +279,28 @@ async function askPermission(): Promise<void> {
 
 .reminder-time input:disabled {
   opacity: 0.5;
+}
+
+.choice-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0 8px;
+}
+
+.muted-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.muted-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 </style>

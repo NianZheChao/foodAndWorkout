@@ -45,6 +45,12 @@ export const routes: RouteRecordRaw[] = [
   },
   { path: '/settings/model', name: 'settings-model', component: () => import('@/pages/ModelSettingsPage.vue'), meta: { title: '模型设置', spec: 'M13 FR-1300' } },
   {
+    path: '/about',
+    name: 'about',
+    component: () => import('@/pages/AboutPage.vue'),
+    meta: { title: '关于与免责声明', spec: 'M16 FR-1608 / 需求 §9' }
+  },
+  {
     path: '/data',
     name: 'data',
     component: () => import('@/pages/DataPage.vue'),

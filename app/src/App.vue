@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import { runQueue } from '@/application/queue'
 import { startReminderLoop } from '@/application/notify'
+import { applyThemeFromSettings, startThemeSync } from '@/app/theme'
 import InstallHint from '@/components/InstallHint.vue'
 
 const route = useRoute()
@@ -28,16 +29,21 @@ async function drainQueue(): Promise<void> {
  * 没授权 / 不支持时整条链路静默跳过，应用内提醒不受影响（FR-1104）。
  */
 let stopReminders: (() => void) | undefined
+/** 外观（FR-1606）：启动时按设置写一次 `data-theme`，「跟随系统」时订阅系统配色变化 */
+let stopTheme: (() => void) | undefined
 
-onMounted(() => {
+onMounted(async () => {
   void drainQueue()
   window.addEventListener('online', drainQueue)
   stopReminders = startReminderLoop()
+  await applyThemeFromSettings()
+  stopTheme = startThemeSync()
 })
 
 onUnmounted(() => {
   window.removeEventListener('online', drainQueue)
   stopReminders?.()
+  stopTheme?.()
 })
 
 /**

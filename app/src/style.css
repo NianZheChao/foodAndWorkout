@@ -3,7 +3,8 @@
  *
  * 页面只写「这一页特有的东西」，间距、卡片、数值排版、按钮网格这类反复出现的样式
  * 一律收在这里 —— 改一处，所有页面跟着变（以前每页各写一份，改一轮要翻五个文件）。
- * 颜色 token 全部带语义名，方便以后接深色主题（设置里的 theme 还没落地）。
+ * 颜色 token 全部带语义名，深色主题只换一套 token（见下面的 `:root[data-theme='dark']`，
+ * 由 `app/src/app/theme.ts` 按设置写到 `<html>` 上）。
  */
 
 :root {
@@ -26,6 +27,64 @@
   font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', sans-serif;
   color: var(--text);
   background: var(--bg);
+}
+
+/*
+ * 深色（FR-1606）：只换 token，页面一行都不用改。
+ *
+ * `--van-*` 那一段是把 Vant 的关键变量映射到同一套 token 上 —— Vant 只在少数组件里
+ * 自带深色覆盖，映射一遍才能让标签栏 / 输入框 / 弹窗跟页面一起变深。
+ * `color-scheme` 是给原生控件（`<input type="date">` / `type="time"` 的日历与时钟图标）用的。
+ */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --brand: #57b892;
+  --brand-strong: #7fccab;
+  --brand-soft: #17332a;
+  --brand-line: #2a5142;
+  --accent: #d9a05b;
+  --danger: #f08d8d;
+  --text: #e9ecef;
+  --text-muted: #9aa4ae;
+  --border: #2c333a;
+  --bg: #12161a;
+  --surface: #1b2026;
+  --warn: #d9a05b;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.5);
+
+  --van-background: var(--surface);
+  --van-background-2: var(--bg);
+  --van-background-3: var(--bg);
+  --van-text-color: var(--text);
+  --van-text-color-2: var(--text-muted);
+  --van-text-color-3: var(--text-muted);
+  --van-border-color: var(--border);
+  --van-active-color: rgba(255, 255, 255, 0.06);
+  --van-cell-background: var(--surface);
+  --van-cell-text-color: var(--text);
+  --van-cell-group-background: var(--bg);
+  --van-field-input-text-color: var(--text);
+  --van-field-placeholder-text-color: var(--text-muted);
+  --van-nav-bar-background: var(--surface);
+  --van-tabbar-background: var(--surface);
+  --van-tabbar-item-text-color: var(--text-muted);
+  --van-tabbar-item-active-color: var(--brand);
+  --van-tabbar-item-active-background: var(--surface);
+  --van-tabs-nav-background: var(--surface);
+  --van-tab-text-color: var(--text-muted);
+  --van-tabs-bottom-bar-color: var(--brand);
+  --van-dialog-background: var(--surface);
+  --van-popup-background: var(--surface);
+  --van-picker-background: var(--surface);
+  --van-button-default-background: var(--surface);
+  --van-button-default-color: var(--text);
+  --van-button-default-border-color: var(--border);
+  --van-toast-background: rgba(0, 0, 0, 0.82);
+  --van-empty-description-color: var(--text-muted);
+  --van-loading-spinner-color: var(--brand);
+  --van-search-background: var(--bg);
+  --van-progress-background: var(--border);
+  --van-progress-color: var(--brand);
 }
 
 * {

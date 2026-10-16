@@ -5,8 +5,8 @@
 
 - 最后更新：2026-10-16
 - 应用版本：`0.1.0`（`app/package.json`）
-- 分支 / 最近提交：`main` / `af94ef8 feat: 食物库治理（T4.4）：/foods 页 + 来源/分类筛选 + 疑似重复分组 + 停用与删除保护`
-- 质量基线（2026-10-16 实测）：`npm test` 49 文件 / 461 项（`npm run build` 随之通过）；**全量并行跑时有两个已知偶发失败**（`quick-log-page.spec.ts` 的草稿断言、`workspace-script.spec.ts` 那条跑 Python 的用例撞 5 秒默认超时），单独重跑即可，见 §8；`workspace-script.spec.ts` 没装 Python 时整组跳过；`npm run build`（含 `vue-tsc -b` 类型检查，**测试文件也在类型检查范围内**）通过
+- 分支 / 最近提交：`main` / `20012cb feat: 提醒（T4.5）：/settings 真页面 + 今日页「今天还没记的」+ 应用打开时的本地通知`
+- 质量基线（2026-10-16 实测）：`npm test` 52 文件 / 484 项（`npm run build` 随之通过）；**全量并行跑时有两个已知偶发失败**（`quick-log-page.spec.ts` 的草稿断言、`workspace-script.spec.ts` 那条跑 Python 的用例撞 5 秒默认超时），单独重跑即可，见 §8；`workspace-script.spec.ts` 没装 Python 时整组跳过；`npm run build`（含 `vue-tsc -b` 类型检查，**测试文件也在类型检查范围内**）通过
 
 ## 0. 三十秒速览
 
@@ -16,7 +16,7 @@
 | 阶段 1 | 本地能力闭环：领域计算、三类记录页、当日汇总、趋势页 | ✅ 完成 |
 | 阶段 2 | 模型能力：配置与连通性、LLM 客户端、食物补全、自由文本 / 图片记录、澄清引擎、队列执行器 | 🟡 主体完成，2 处收尾未做（见 §3） |
 | 阶段 3 | 报告与指导：周报月报、每日指导（A 级）、校准向导、B 级推荐 | 🟡 报告（T3.1 - T3.3）、摘要 v2（T3.6）、每日指导（T3.7，见 §2.10）、校准向导（T3.5，见 §2.11）已完成；**推荐周计划取消**（T3.4），只剩 B 级推荐（T3.8，默认关）未做 |
-| 阶段 4 | 数据治理：导入导出、快照回滚、食物库治理、提醒、设置 | 🟡 导出 / 导入（T4.1，见 §2.12）、工作区文本导出（T4.2，见 §2.13）、快照回滚（T4.3，见 §2.14）、食物库治理（T4.4，见 §2.15）与提醒（T4.5，见 §2.16）已完成；设置页的收尾（T4.6：单位 / 外观 / 不再追问 / 免责声明）未做 |
+| 阶段 4 | 数据治理：导入导出、快照回滚、食物库治理、提醒、设置 | ✅ 完成：导出 / 导入（T4.1，见 §2.12）、工作区文本导出（T4.2，见 §2.13）、快照回滚（T4.3，见 §2.14）、食物库治理（T4.4，见 §2.15）、提醒（T4.5，见 §2.16）与设置收尾（T4.6，见 §2.17）都已落地；只剩 FR-406（食物条目数值编辑）这一笔欠账 |
 
 一句话总结：**「配好档案与目标 → 用一句话或表单记一整天（含未知食物自动补全）→ 看当日汇总与趋势 →
 每天拿一份带依据的 AI 指导 → 用近 4 周的记录做一次校准 → 生成周报 / 月报」这条链路已经完整**；
@@ -24,7 +24,8 @@
 还能导出成原工作区那一套文本（`records/` + `foods.csv` + `profile.md` + `targets.md`，
 仓库脚本可直接消费），手滑毁数据有快照可回滚，食物库能自己治理（来源筛选 / 疑似重复 / 停用），
 提醒也能用了（今日页的「今天还没记的」清单 + 应用打开时的本地通知），设置页把提醒的限制写清楚了，
-只剩设置页的几个开关（单位 / 外观 / 不再追问）与免责声明。
+单位 / 周起始日 / 外观 / 「不再追问」名单都能自己调，免责声明在 `/about`、诊断信息与离线队列在 `/data`，
+阶段 4 到此收口；后面只剩 T3.8（B 级推荐，默认关）与 FR-406（食物条目数值编辑）两笔。
 
 ## 1. 文档地图
 
@@ -497,13 +498,49 @@
   立刻检查且能停），`settings-page.spec.ts` 7 项（五项与默认时间、关掉落库、改时间落库、关掉后时间输入禁用、
   限制文案、不支持的按钮禁用、模型设置入口与 T4.6 清单）。口径与五条落地约定见设计文档 §9.4 的「实现补充」。
 
-> 仍未做（T4.6）：单位与周起始日、外观、`mutedFields`（「不再追问」名单）的 UI 入口、免责声明与诊断信息导出。
+### 2.17 T4.6 落地：设置收尾 / 免责声明 / 诊断导出 / 离线队列（2026-10-16）
+
+阶段 4 的最后一件事：把 `/settings` 与 `/data` 剩下的口子补齐（FR-1606 / FR-1608），
+并让需求 §9 的免责声明真正出现在应用里。
+
+- **外观** `app/theme.ts`：`resolveTheme`（三选一 `light` / `dark` / `auto` → 两档，只有 `auto` 看系统偏好）、
+  `applyTheme`（写 `<html data-theme>`，并按 `van-theme-dark` 给 Vant 的弹窗 / 轻提示一起换深色）、
+  `applyThemeFromSettings`（启动时读库应用）、`startThemeSync`（跟随系统时监听系统配色变化，
+  **每次都重新读设置**，避免用户改成「浅色」之后还跟着系统变）。`style.css` 新增
+  `:root[data-theme='dark']`，把同一套语义 token 整个换一遍（含一批 `--van-*` 映射 + `color-scheme: dark`），
+  **页面样式只认 `data-theme`、不认 settings**。
+- **诊断信息导出** `io/diagnostics.ts`：`buildDiagnostics` 一次凑出「应用 / schema / 导出格式版本、
+  运行环境、各表**条数**、存储占用、模型接口的非机密配置、调用日志汇总、最近 20 条错误」，
+  `serializeDiagnostics` 缩进后可直接贴进 issue，`diagnosticsFileName` 给下载文件名。三条硬约束由
+  `tests/diagnostics.spec.ts` 钉住：**绝不出现 `apiKey`（连字段名都不出现）、不含任何记录内容、
+  错误最多 20 条**。
+- **免责声明** `pages/AboutPage.vue`（`/about`）：需求 §9 的七条**逐条照抄**（估算不是医疗建议、
+  模型可能出错、数据只在本机、别当诊断依据等），外加「数据存在哪」与版本号；入口在 `/settings` 的
+  「关于与免责声明」。
+- **设置页偏好** `pages/SettingsPage.vue` 补两块：① 偏好卡片 —— 单位（只读说明 kg / kcal，避免与
+  记录链路的口径打架）、周起始日（周一 / 周日按钮，只影响「哪一天算周末」，周报口径仍是
+  `periodOf('weekly', date)`）、外观（浅色 / 深色 / 跟随系统三选一，改完立刻 `applyTheme`）；
+  ② 「不再追问的字段」卡片 —— 逐条显示 `mutedFields` 并给「恢复追问」，指向 `/profile` 去补。
+  这两块补上了 §3 里「`mutedFields` 没有 UI 入口」的缺口；原来那张「还没做的部分」清单卡片随之删掉。
+- **离线队列界面** `pages/DataPage.vue`：新增「离线队列」卡片（未完成 / 已完成分组、单条重试、
+  单条移除「不再自动重试」、清理已完成）与「诊断信息导出」卡片；`data/repositories/pendingOps.ts`
+  补 `listOps`（全部含 done，新的在前）与 `removeOp`。顺手修了原来 `<style scoped>` 提前闭合
+  导致 `.snapshot-*` 样式失效的问题。
+- 验收：`npm test` 52 文件 / 484 项、`npm run build` 通过。新用例 `theme.spec.ts` 5 项（三选一解析、
+  写 `data-theme`、跟随系统监听能停、系统配色变化时重新读设置）、`diagnostics.spec.ts` 4 项（结构完整、
+  **没有 apiKey 字段名**、不含记录内容、错误上限 20）、`about-page.spec.ts` 4 项（七条免责声明、
+  数据位置、版本、去 `/data` 入口）；`settings-page.spec.ts` 增 6 项（周起始日落库、外观三选一并落库、
+  单位只读、`mutedFields` 逐条恢复、去 `/profile` 入口）、`data-page.spec.ts` 增 2 项（离线队列、
+  诊断导出），`pages.spec.ts` 挂载清单加 `/about`。口径与落地约定见设计文档 §10.2 的「实现补充」。
+
+> 阶段 4 到此收口。仍欠两笔：**T3.8（B 级生成式推荐，默认关，开启前必须先恢复忌口 / 过敏 / 器材 /
+> 每餐时间四个约束字段，FR-1003）** 与 **FR-406（食物条目数值编辑 / 覆盖，含 DR-06 来源替换）**。
+
 ## 3. 部分完成：有明确缺口（优先补这些）
 
 | 编号 | 已实现 | 缺什么 | 建议落点 |
 | --- | --- | --- | --- |
 | T2.5 | 每次调用都写 `llmLogs`；模型设置页汇总次数 / 失败数 / 输入输出估算，并可清空 | 单次任务超出预算 2 倍时的「是否继续」确认弹窗 | `app/src/llm/index.ts`（估算是现成的）+ `LogQuickPage` 的交互 |
-| 澄清 | `mutedFields`（「不再追问」名单）机制可用 | 没有 UI 入口让用户维护这份名单，目前只能由调用方传入 | `/settings` 页（T4.5 已把提醒做进去，名单入口属 T4.6） |
 
 ## 4. 未开始
 
@@ -526,7 +563,6 @@
 
 | 任务 | 要做的事 | 依赖 / 注意 | 验收 |
 | --- | --- | --- | --- |
-| T4.6 | `/settings`（提醒、单位、外观、不再追问名单）与 `/data` 剩下的部分（离线队列界面、诊断信息导出）、免责声明 | 需求 §9 要求在应用内展示免责声明；`modelConfig` 已有诊断信息的雏形。**`/data` 的导出 / 导入（T4.1）与快照回滚（T4.3）已经做了** | 需求 §9 与 FR-1608 可验 |
 | FR-406（欠账） | 食物条目数值的编辑 / 覆盖（含 DR-06 的来源替换） | M4 的一部分，原计划搭在「食物库」页上，T4.4 只做了来源筛选 / 疑似重复 / 停用与删除保护 | 手工值能覆盖模型值，来源标注跟着变 |
 
 > **T4.1（导出包 / 导入）已于 2026-10-16 完成**，见 §2.12。
@@ -539,7 +575,9 @@
 > 来源 / 分类筛选、疑似重复分组提醒、停用↔恢复、被引用过的条目删不掉（FR-412）。
 > **T4.5（提醒）已于 2026-10-16 完成**，见 §2.16：`/settings` 从占位页变成真页面（`PlaceholderPage.vue` 退休），
 > 今日页顶部有「今天还没记的」清单，系统支持且已授权时应用打开着会按设定时间弹一条本地通知。
-> **T4.6 只做设置页剩下的部分**（它那一行里的「提醒」已经在 T4.5 做完了），之后收尾 T3.8 与 FR-406。
+> **T4.6（设置、免责声明、诊断信息导出）已于 2026-10-16 完成**，见 §2.17：`/settings` 补上偏好（单位 / 周起始日 / 外观）
+> 与「不再追问」逐条恢复，`/about` 放上需求 §9 的七条免责声明，`/data` 补上离线队列界面与诊断信息导出。
+> 阶段 4 的表格到此清空，只剩 **FR-406**（食物条目数值编辑）这一笔欠账，之后收尾 **T3.8**。
 
 ## 5. 代码地图
 
@@ -548,7 +586,7 @@
 ```
 app/
   src/
-    app/          启动流程（bootstrap：开库 + 写种子）、日期工具、设置、图片压缩
+    app/          启动流程（bootstrap：开库 + 写种子）、日期工具、设置、外观（theme）、图片压缩
     domain/       纯计算与领域类型 —— 无 IO、不依赖 Vue / Dexie（对拍测试直接打这里）；
                   foodName / foodAudit 是食物库的名称归一化与疑似重复判定；reminders 是提醒的判定、默认时间段与补记入口
     data/         Dexie schema（db.ts）、仓储层（repositories/）、种子数据（seed/）
@@ -556,8 +594,9 @@ app/
     application/  用例层：本地优先、业务校验、落库编排（foodLibrary / foodResolve / foodAdmin / logParse / queue / report / coach / calibration / snapshot / reminders / notify / daySummary）
     io/           导出包组装（exportPackage）、导入校验 / 预演 / 落库（importPackage）；
                   工作区文本导出（workspaceExport）、日快照载荷与校验（snapshot）；
+                  诊断信息导出（diagnostics，不含 token 与记录内容）；
                   markdown/ 记录文件解析与导出（record / export）
-    pages/        页面；components/ 共享组件；router/ 路由；store/ Pinia 会话态
+    pages/        页面（含 AboutPage：免责声明与版本）；components/ 共享组件；router/ 路由；store/ Pinia 会话态
   tests/          单元 / 对拍 / 组件测试（fixtures/ 与 helpers/ 同级）
   scripts/        构建期脚本：gen-seed.mjs / gen-expected.mjs / gen-icons.mjs
 ```
@@ -607,7 +646,11 @@ app/
 | 提醒的判定与默认项（T4.5） | `domain/reminders.ts` `pendingReminders` / `dueReminders` / `factsFor` / `mergeReminders` / `reminderHint` / `reminderTarget` |
 | 提醒的事实来源 | `application/reminders.ts` `buildReminderState`（一次查库凑出「今天有哪些数据」） |
 | 本地通知与权限 | `application/notify.ts` `notificationSupport` / `requestNotificationPermission` / `runReminderTick` / `startReminderLoop` |
-| 设置页与提醒入口 | `pages/SettingsPage.vue`（`/settings`，T4.5）；今日页顶部的提醒卡片在 `pages/TodayPage.vue` |
+| 设置页与提醒入口 | `pages/SettingsPage.vue`（`/settings`，T4.5 + T4.6 的偏好 / 名单）；今日页顶部的提醒卡片在 `pages/TodayPage.vue` |
+| 外观（浅色 / 深色 / 跟随系统，T4.6） | `app/theme.ts` `resolveTheme` / `applyTheme` / `applyThemeFromSettings` / `startThemeSync`；深色 token 在 `src/style.css` 的 `:root[data-theme='dark']` |
+| 诊断信息导出（T4.6） | `io/diagnostics.ts` `buildDiagnostics` / `serializeDiagnostics` / `diagnosticsFileName` |
+| 离线队列界面（T4.6） | `data/repositories/pendingOps.ts` `listOps` / `removeOp`；界面在 `pages/DataPage.vue` |
+| 免责声明与版本（T4.6） | `pages/AboutPage.vue`（`/about`），路由注册在 `app/src/router/index.ts` |
 | 路由表 | `app/src/router/index.ts`（权威表格在 `docs/pwa-design.md` §8.1） |
 | 底部 tab 匹配规则 | `app/src/App.vue` 的 `tabs[].match` |
 
@@ -618,7 +661,7 @@ app/
 ```bash
 npm install
 npm run dev       # 本地开发服务器
-npm test          # 单元 / 对拍 / 组件测试（49 文件 / 461 项）
+npm test          # 单元 / 对拍 / 组件测试（52 文件 / 484 项）
 npm run build     # vue-tsc 类型检查 + 生产构建（产物 dist/）
 npm run preview   # 预览构建产物 —— 测 PWA 行为请用这个，不要用 dev
 npm run seed      # 从 ../data/foods.csv 重新生成内置食物库种子
@@ -738,6 +781,12 @@ npm run build
   1 → 2 的升级把 `days` / `intake` / `foods` 等全部删掉，老用户的数据当场蒸发（`db.spec.ts` 的迁移用例抓到：
   `expected undefined to match object { date: '2026-10-01' }`）。写法固定为
   「`version(1)` 全量表 + 之后每版只声明新增的那张表」，不要在 `version(n)` 里写 `SCHEMA_VERSION`。
+- **jsdom 里点「跳转 / 下载」的按钮后要 `vi.waitFor`**：`trigger('click')` 触发的路由跳转与下载
+  都不是同步完成的（`router.push` 是 promise）；断言目标路由前先 `await vi.waitFor(...)`，
+  下载则用 `vi.spyOn(HTMLAnchorElement.prototype, 'click')` 挡掉 jsdom 会报错的真实下载。
+- **Vant 开关关掉后 DOM 上没有 `van-switch--off`**：`van-switch` 只有打开时才有 `van-switch--on` 类，
+  断言「关着」要写 `expect(html).not.toContain('van-switch--on')`，不要去等一个不存在的 off 类。
+  `settings-page.spec.ts` / `data-page.spec.ts` 都按这个写。
 
 ## 9. 建议的推进顺序
 
@@ -755,15 +804,16 @@ npm run build
    停用↔恢复、被引用过的条目删不掉（FR-412）。
 9. ~~T4.5 提醒~~ —— 2026-10-16 已完成（见 §2.16）：`/settings` 真页面（`PlaceholderPage.vue` 退休）、
    今日页「今天还没记的」清单、应用打开时的本地通知（授权后一天只弹一次）。
-10. **T4.6 设置页收尾**：单位与周起始日、外观、`mutedFields`（「不再追问」名单）入口、免责声明与诊断信息导出，
-   外加 `/data` 的离线队列界面 —— 阶段 4 的最后一件事。**T3.8（B 级推荐）**放最后：它默认关，且开启前必须先
-   恢复约束字段。另外还欠一笔 **FR-406**（食物条目数值编辑），见 §4.2 表格里那一行。
+10. ~~T4.6 设置页收尾~~ —— 2026-10-16 已完成（见 §2.17）：偏好（单位 / 周起始日 / 外观）、「不再追问」逐条恢复、
+    `/about` 免责声明、`/data` 的离线队列界面与诊断信息导出 —— 阶段 4 到此收口。
+11. **T3.8 B 级生成式推荐**（默认关；开启前必须先恢复忌口 / 过敏 / 可用器材 / 每餐时间四个约束字段，FR-1003）
+    与 **FR-406**（食物条目数值编辑 / 覆盖，含 DR-06 来源替换，见 §4.2）—— 剩下的两笔。
 
 每一步都能独立验收；建议每完成一项就更新本文第 2 / 3 / 4 节的表格，以及 `docs/pwa-design.md` §13 的状态标记。
 
 ## 10. 交接自检清单
 
-- [ ] `cd app && npm install && npm test`（49 文件 / 461 项；`quick-log-page.spec.ts` 与 `workspace-script.spec.ts`
+- [ ] `cd app && npm install && npm test`（52 文件 / 484 项；`quick-log-page.spec.ts` 与 `workspace-script.spec.ts`
       偶发失败时重跑一次即可，见 §8）
 - [ ] `npm run build` 通过
 - [ ] `npm run preview` 能打开今日页，底部 tab 来回切换不卡死
@@ -796,6 +846,13 @@ npm run build
 - [ ] `/settings` 把「晨起称重」的时间改到比现在早一点 → 点「开启系统通知」并允许 → 回今日页（保持应用打开）：
       一分钟内会弹一条「薄肌计划 · 晨起称重」；切到别的 App 再切回来不会再弹同一条
 - [ ] `/settings` 的限制说明能看到：没有服务端 → 应用关着不会响；不提供日历 / .ics 导出
+- [ ] `/settings`「偏好」里把外观切成「深色」：整页立刻变深（不用刷新）；切「跟随系统」后再改系统配色也跟着变；
+      把「周起始日」改成周日 → 刷新后仍是周日
+- [ ] `/settings`「不再追问的字段」里给某条点「恢复追问」：它从名单里消失（刷新后不再出现），点「去补」能进 `/profile`
+- [ ] `/settings`「关于与免责声明」→ `/about`：七条免责声明逐条可读、能看到版本号、能回到 `/data`
+- [ ] `/data`「离线队列」：列表能看到未完成 / 已完成的条目；点「不再自动重试」只删掉队列项（记录本身不动）；
+      点「清理已完成」后已完成分组消失
+- [ ] `/data`「诊断信息导出」：下载到的 JSON 里**搜不到 apiKey**（连字段名都没有）、也没有任何食物 / 体重 / 档案内容，只有版本、表条数、模型地址与错误摘要
 - [ ] `/profile` 填一份档案 → `/targets` 用首次估算写入目标，并在「校准记录」里看到一行
 - [ ] 在 `/targets` 把热量改掉 200 kcal：确认卡片要出现「超过 ±150 kcal」与「样本可能不足」提示
 - [ ] 在 `/settings/model` 填入自己的 OpenAI 兼容接口，连通性测试通过

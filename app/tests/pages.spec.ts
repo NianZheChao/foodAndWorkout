@@ -67,6 +67,7 @@ describe('页面挂载（阶段 1 已落地的路由）', () => {
     '/profile',
     '/data',
     '/settings',
+    '/about',
     '/settings/model'
   ])(
     '%s 能挂载并渲染出页面标题',

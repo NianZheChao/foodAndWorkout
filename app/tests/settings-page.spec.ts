@@ -14,7 +14,7 @@ import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 import SettingsPage from '@/pages/SettingsPage.vue'
 import { routes } from '@/router'
 import { db } from '@/data/db'
-import { getSettings } from '@/data/repositories/settings'
+import { getSettings, saveSettings } from '@/data/repositories/settings'
 import { REMINDER_DEFAULTS, REMINDER_IDS } from '@/domain/reminders'
 
 async function mountSettings(): Promise<{ wrapper: VueWrapper; router: Router }> {
@@ -33,6 +33,12 @@ async function mountSettings(): Promise<{ wrapper: VueWrapper; router: Router }>
 
 function switches(wrapper: VueWrapper): VueWrapper[] {
   return wrapper.findAll('.van-switch') as unknown as VueWrapper[]
+}
+
+function button(wrapper: VueWrapper, label: string) {
+  const found = wrapper.findAll('button').find((item) => item.text().includes(label))
+  if (!found) throw new Error(`找不到按钮「${label}」`)
+  return found
 }
 
 async function savedReminder(id: string) {
@@ -111,7 +117,7 @@ describe('设置页 · 提醒', () => {
     expect((button.element as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('模型设置入口与「还没做的部分」都在（已有的能力不能被埋掉）', async () => {
+  it('模型设置入口常驻（已有的能力不能被埋掉）', async () => {
     const { wrapper, router } = await mountSettings()
     const entry = wrapper.findAll('button').find((item) => item.text() === '模型设置')
     if (!entry) throw new Error('找不到「模型设置」入口')
@@ -119,9 +125,71 @@ describe('设置页 · 提醒', () => {
     await vi.waitFor(() => {
       expect(router.currentRoute.value.path).toBe('/settings/model')
     })
+  })
+})
 
-    const text = wrapper.text()
-    expect(text).toContain('单位与周起始日')
-    expect(text).toContain('不再追问')
+describe('设置页 · 偏好与名单（T4.6）', () => {
+  it('单位只说明 kg / kcal，并讲清为什么不换算成斤 / kJ', async () => {
+    const { wrapper } = await mountSettings()
+    expect(wrapper.text()).toContain('重量 kg · 能量 kcal')
+    expect(wrapper.text()).toContain('不换算成斤或 kJ')
+  })
+
+  it('周起始日切换落库（它只决定「哪一天算周末」，不影响报告口径）', async () => {
+    const { wrapper } = await mountSettings()
+    await button(wrapper, '周日').trigger('click')
+    await vi.waitFor(async () => {
+      expect((await getSettings()).weekStart).toBe(7)
+    })
+    await button(wrapper, '周一').trigger('click')
+    await vi.waitFor(async () => {
+      expect((await getSettings()).weekStart).toBe(1)
+    })
+  })
+
+  it('外观切换立刻生效并落库：深色 → data-theme=dark，浅色 → 回到 light', async () => {
+    const { wrapper } = await mountSettings()
+    await button(wrapper, '深色').trigger('click')
+    await vi.waitFor(async () => {
+      expect((await getSettings()).theme).toBe('dark')
+    })
+    expect(document.documentElement.dataset.theme).toBe('dark')
+
+    await button(wrapper, '浅色').trigger('click')
+    await vi.waitFor(async () => {
+      expect((await getSettings()).theme).toBe('light')
+    })
+    expect(document.documentElement.dataset.theme).toBe('light')
+    expect(wrapper.text()).toContain('跟随系统')
+  })
+
+  it('「不再追问」名单列出来，点「恢复追问」就从名单里拿掉（FR-1103）', async () => {
+    await saveSettings({ mutedFields: ['油.grams', '盐.grams'] })
+    const { wrapper } = await mountSettings()
+    expect(wrapper.text()).toContain('油.grams')
+
+    await button(wrapper, '恢复追问').trigger('click')
+    await vi.waitFor(async () => {
+      expect((await getSettings()).mutedFields).toEqual(['盐.grams'])
+    })
+    expect(wrapper.text()).not.toContain('油.grams')
+  })
+
+  it('名单为空时说「该问的都会问」，并留一条去档案页编辑的路', async () => {
+    const { wrapper, router } = await mountSettings()
+    expect(wrapper.text()).toContain('名单是空的')
+
+    await button(wrapper, '去档案页编辑名单').trigger('click')
+    await vi.waitFor(() => {
+      expect(router.currentRoute.value.path).toBe('/profile')
+    })
+  })
+
+  it('关于与免责声明入口能进 /about（FR-1608）', async () => {
+    const { wrapper, router } = await mountSettings()
+    await button(wrapper, '关于与免责声明').trigger('click')
+    await vi.waitFor(() => {
+      expect(router.currentRoute.value.path).toBe('/about')
+    })
   })
 })

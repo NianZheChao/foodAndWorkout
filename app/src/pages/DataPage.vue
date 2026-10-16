@@ -14,7 +14,9 @@ import { showDialog, showToast } from 'vant'
 import AppHeader from '@/components/AppHeader.vue'
 import { formatDateTime, todayIso } from '@/app/date'
 import { db } from '@/data/db'
+import { listOps, removeOp } from '@/data/repositories/pendingOps'
 import { SNAPSHOT_KEEP } from '@/data/repositories/snapshots'
+import { runQueue } from '@/application/queue'
 import {
   captureDay,
   listSnapshotSummaries,
@@ -22,6 +24,12 @@ import {
   type RestoreReport,
   type SnapshotSummary
 } from '@/application/snapshot'
+import {
+  buildDiagnostics,
+  diagnosticsFileName,
+  serializeDiagnostics,
+  type DiagnosticsReport
+} from '@/io/diagnostics'
 import { useDayStore } from '@/store/day'
 import { buildExportPackage, exportFileName, serializeExport, type ExportPackage } from '@/io/exportPackage'
 import {
@@ -40,6 +48,7 @@ import {
   type ImportPreview,
   type ImportReport
 } from '@/io/importPackage'
+import type { PendingOp } from '@/domain/types'
 
 /** 统计口径与导出包一致，标签只给用户看。 */
 const COUNT_LABELS: Record<string, string> = {
@@ -58,6 +67,19 @@ const COUNT_LABELS: Record<string, string> = {
   settings: '设置'
 }
 
+const OP_KIND_LABELS: Record<PendingOp['kind'], string> = {
+  'food.resolve': '食物补全',
+  'log.parse': '一句话 / 图片解析',
+  'report.generate': '报告生成'
+}
+
+const OP_STATUS_LABELS: Record<PendingOp['status'], string> = {
+  queued: '排队中',
+  waiting: '等网络',
+  'needs-attention': '需要你处理',
+  done: '已完成'
+}
+
 const busy = ref(false)
 const loaded = ref(false)
 const errorMessage = ref('')
@@ -73,6 +95,8 @@ const fileInput = ref<HTMLInputElement>()
 const snapshotDate = ref(todayIso())
 const snapshots = ref<SnapshotSummary[]>([])
 const restoreReport = ref<RestoreReport>()
+const ops = ref<PendingOp[]>([])
+const diagnostics = ref<{ report: DiagnosticsReport; name: string }>()
 
 async function loadCounts(): Promise<void> {
   const [days, intake, workout, foods, reports, calibrations, pendingOps, drafts, adviceLog, targets, profile, settings] =
@@ -92,6 +116,7 @@ async function loadCounts(): Promise<void> {
     ])
   counts.value = { days, intake, workout, foods, reports, calibrations, pendingOps, drafts, adviceLog, targets, profile, settings }
   snapshots.value = await listSnapshotSummaries(20)
+  ops.value = await listOps()
 }
 
 onMounted(async () => {
@@ -265,6 +290,76 @@ async function rollback(item: SnapshotSummary): Promise<void> {
     busy.value = false
   }
 }
+
+/** 队列界面只列未完成的；已完成的攒着没用，给一个清掉的口子（清的不是记录，见 FR-1209）。 */
+const openOps = computed(() => ops.value.filter((op) => op.status !== 'done'))
+const doneOps = computed(() => ops.value.filter((op) => op.status === 'done'))
+
+/** 手动重试整个队列（平时它在启动 / 联网时自动跑，§6.10）。 */
+async function retryQueue(): Promise<void> {
+  busy.value = true
+  errorMessage.value = ''
+  try {
+    const report = await runQueue()
+    await loadCounts()
+    const message =
+      report.messages[report.messages.length - 1] ??
+      report.skipped[0] ??
+      (report.done ? '队列已处理' : '队列里没有可自动处理的项目')
+    showToast({ message, position: 'bottom' })
+  } catch (cause) {
+    errorMessage.value = `重试失败：${cause instanceof Error ? cause.message : String(cause)}`
+  } finally {
+    busy.value = false
+  }
+}
+
+/** 「不再提醒」只拿掉队列项，**不碰记录**：那条记录仍是「待补全」。所以要二次确认说清差别。 */
+async function dropOp(op: PendingOp): Promise<void> {
+  try {
+    await showDialog({
+      title: '不再自动重试这一条',
+      message: '只把这条从待办队列里去掉：那条记录不会补全，也不会被删掉（仍显示「待补全」）。'
+    })
+  } catch {
+    return
+  }
+  await removeOp(op.id)
+  await loadCounts()
+  showToast({ message: '已从队列里拿掉', position: 'bottom' })
+}
+
+async function clearDoneOps(): Promise<void> {
+  const rows = doneOps.value
+  if (!rows.length) return
+  for (const op of rows) await removeOp(op.id)
+  await loadCounts()
+  showToast({ message: `已清掉 ${rows.length} 条已完成的队列项`, position: 'bottom' })
+}
+
+/** 诊断信息导出（design §10.2）：版本 / 环境 / 条数 / 模型地址（不含 token）/ 最近错误。 */
+async function exportDiagnostics(): Promise<void> {
+  busy.value = true
+  errorMessage.value = ''
+  try {
+    const report = await buildDiagnostics()
+    const name = diagnosticsFileName()
+    diagnostics.value = { report, name }
+    if (typeof URL.createObjectURL === 'function') {
+      const url = URL.createObjectURL(new Blob([serializeDiagnostics(report)], { type: 'application/json' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = name
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 0)
+    }
+    showToast({ message: '诊断信息已生成', position: 'bottom' })
+  } catch (cause) {
+    errorMessage.value = `导出诊断信息失败：${cause instanceof Error ? cause.message : String(cause)}`
+  } finally {
+    busy.value = false
+  }
+}
 </script>
 
 <template>
@@ -378,6 +473,43 @@ async function rollback(item: SnapshotSummary): Promise<void> {
     </div>
 
     <div class="card">
+      <div class="card-head">
+        <h2 class="card-title">离线队列</h2>
+        <span class="tag">{{ openOps.length ? `${openOps.length} 条待处理` : '空' }}</span>
+      </div>
+      <p class="muted">
+        未配模型或断网时，那些「还没算出营养值」的记录会排在这里等重放：配好模型并联网后，
+        应用启动或恢复联网时自动跑。卡住不动的就在下面这条列表里看到原因。
+      </p>
+      <p v-if="!openOps.length" class="muted">没有待处理的队列项。</p>
+      <template v-else>
+        <ul class="op-list">
+          <li v-for="op in openOps" :key="op.id" class="op-item">
+            <div class="op-head">
+              <span>{{ OP_KIND_LABELS[op.kind] ?? op.kind }}</span>
+              <span class="tag">{{ OP_STATUS_LABELS[op.status] ?? op.status }}</span>
+            </div>
+            <p class="muted op-ref">{{ op.ref }}</p>
+            <div class="kv">
+              <span class="kv-key">最近一次</span>
+              <span class="kv-value">{{ formatDateTime(op.updatedAt) }} · 已试 {{ op.attempts }} 次</span>
+            </div>
+            <p v-if="op.lastError" class="muted warn-text">{{ op.lastError }}</p>
+            <div class="actions">
+              <van-button size="mini" plain @click="dropOp(op)">不再自动重试</van-button>
+            </div>
+          </li>
+        </ul>
+        <div class="actions">
+          <van-button size="small" plain block :loading="busy" @click="retryQueue">立即重试队列</van-button>
+        </div>
+      </template>
+      <div v-if="doneOps.length" class="actions">
+        <van-button size="mini" plain @click="clearDoneOps">清掉 {{ doneOps.length }} 条已完成的队列项</van-button>
+      </div>
+    </div>
+
+    <div class="card">
       <h2 class="card-title">导入</h2>
       <p class="muted">
         选一个之前导出的 JSON。导入前会先校验（是不是本应用的文件 / 版本 / 校验和），
@@ -487,6 +619,31 @@ async function rollback(item: SnapshotSummary): Promise<void> {
       </ul>
     </div>
 
+    <div class="card">
+      <h2 class="card-title">诊断信息导出</h2>
+      <p class="muted">
+        出问题时发给开发者的那个文件：版本 / 运行环境 / 各表条数 / 存储占用 / 模型地址
+        （<strong>不含 token</strong>）/ 调用次数与 token 估算 / 最近 20 条错误。
+        <strong>没有饮食、体重、档案的内容</strong>，可以放心贴出去。
+      </p>
+      <div class="actions">
+        <van-button plain block :loading="busy" @click="exportDiagnostics">导出诊断信息</van-button>
+      </div>
+      <template v-if="diagnostics">
+        <div class="kv">
+          <span class="kv-key">文件名</span>
+          <span class="kv-value">{{ diagnostics.name }}</span>
+        </div>
+        <div class="kv">
+          <span class="kv-key">内容</span>
+          <span class="kv-value">
+            v{{ diagnostics.report.app.version }} · schema v{{ diagnostics.report.app.schemaVersion }} ·
+            队列 {{ diagnostics.report.counts.pendingOps ?? 0 }} 条 · 错误 {{ diagnostics.report.errors.length }} 条
+          </span>
+        </div>
+      </template>
+    </div>
+
     <p v-if="errorMessage" class="muted warn-text">{{ errorMessage }}</p>
   </section>
 </template>
@@ -524,7 +681,6 @@ async function rollback(item: SnapshotSummary): Promise<void> {
   gap: 4px;
   font-size: 13px;
 }
-</style>
 
 .snapshot-row {
   display: flex;
@@ -570,3 +726,33 @@ async function rollback(item: SnapshotSummary): Promise<void> {
 .snapshot-day {
   color: var(--text-muted);
 }
+
+.op-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.op-item {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.op-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.op-ref {
+  margin: 4px 0;
+  word-break: break-all;
+}
+</style>
