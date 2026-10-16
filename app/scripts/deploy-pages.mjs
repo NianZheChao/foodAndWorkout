@@ -123,7 +123,10 @@ cpSync(distDir, cacheDir, { recursive: true })
 //    `.nojekyll`：GitHub Pages 默认拿 Jekyll 处理分支内容，没有它会丢掉下划线开头的文件。
 //    `404.html`：SPA 回退。从主屏冷启动会直接请求 `/today`，GitHub Pages 把未知路径交给 404.html，
 //    而它就是 index.html，路由照样能接上（根路径部署同样需要）。
+//    `.gitattributes`：产物仓库不要任何行尾转换 —— 否则每个文件都要过 `core.autocrlf` 一遍
+//    （工作量全变成行尾噪声），二进制更不该被碰。
 writeFileSync(join(cacheDir, '.nojekyll'), '')
+writeFileSync(join(cacheDir, '.gitattributes'), '* -text\n')
 copyFileSync(join(cacheDir, 'index.html'), join(cacheDir, '404.html'))
 writeFileSync(
   join(cacheDir, 'README.md'),
