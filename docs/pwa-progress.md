@@ -5,8 +5,8 @@
 
 - 最后更新：2026-10-16
 - 应用版本：`0.1.0`（`app/package.json`）
-- 分支 / 最近提交：`main` / `c42cd12 feat: 生成式推荐（T3.8 第一步）：约束字段恢复 + /settings 开关 + 档案约束卡片`
-- 质量基线（2026-10-16 实测）：`npm test` 59 文件 / 558 项（`npm run build` 随之通过）；全量并行跑**已不再有偶发失败**（两条老竞态已按 §8 修掉，真跑 Python 的那条也给了 30 秒超时）；`workspace-script.spec.ts` 没装 Python 时整组跳过；`npm run build`（含 `vue-tsc -b` 类型检查，**测试文件也在类型检查范围内**）通过
+- 分支 / 最近提交：`main` / `feat: 界面与菜单重构（T4.7）：导航树 `app/nav.ts` + 五个域 + 「我的」页`
+- 质量基线（2026-10-16 重构后实测）：`npm test` 60 文件 / 553 项（`npm run build` 随之通过）；全量并行跑**已不再有偶发失败**（两条老竞态已按 §8 修掉，真跑 Python 的那条也给了 30 秒超时）；`workspace-script.spec.ts` 没装 Python 时整组跳过；`npm run build`（含 `vue-tsc -b` 类型检查，**测试文件也在类型检查范围内**）通过
 
 ## 0. 三十秒速览
 
@@ -28,7 +28,7 @@
 食物库里模型给的数值也能用包装标签直接覆盖掉（FR-406），阶段 4 到此**全部收口、无欠账**；
 整份计划的最后一件 T3.8（B 级生成式推荐，默认关）也在 §2.19（安全边界）与 §2.20（两个任务 + `/plan` 页）
 落地了 —— **阶段 0 到阶段 4 全部完成，没有欠账**；计划收口后又补了两件「怎么用起来」的事：
-token 预算告警（T2.5，见 §2.21）与**分发**（`npm run deploy` 发到 GitHub Pages，见 §2.22）。B 级推荐按 FR-1003 保持默认关，要到
+token 预算告警（T2.5，见 §2.21）与**分发**（`npm run deploy` 发到 GitHub Pages，见 §2.22）；随后又做了一轮**界面与菜单重构**（T4.7，见 §2.23）—— 底部 tab 由「今日 / 记录 / 趋势 / 报告 / 设置」变成五个域「今日 / 记录 / 分析 / 我的 / 设置」，每个页面都有统一的树状路径。B 级推荐按 FR-1003 保持默认关，要到
 「设置 → 生成式推荐」显式打开、且档案里四项约束填齐之后才会出现「今天练什么 / 今天吃什么」。
 
 ## 1. 文档地图
@@ -185,6 +185,7 @@ token 预算告警（T2.5，见 §2.21）与**分发**（`npm run deploy` 发到
   `/targets`、`/profile` 之前只能从趋势页的按钮进去，二级页面全都没有退路；
   现在今日页「更多」里有 当日汇总 / 趋势 / 目标与校准 / 档案 / 食物库 / 数据 六个入口，
   二级页面一律带返回（有历史就 `back()`，直接打开就回今日页）。
+  （2026-10-16 重构后「更多」卡片被拆掉、入口改由页头的域导航条统一给，见 §2.23。）
 - **`components/ChipSelect.vue`**：会换行的标签按钮组，单选 / 多选共用。
   替掉 MET（15 项）、肌群（9 项）、调味料（11 项）、器材（7 项）的横排 checkbox —— 横排在手机上挤成一团，
   也不满足 §8.4 的 44px 触控底线。
@@ -370,7 +371,7 @@ token 预算告警（T2.5，见 §2.21）与**分发**（`npm run deploy` 发到
   （否则会冲掉本机「不再追问」名单）。
 - **汇总重算**：文件里的 `summarySnapshot` 一律不采信，导入后按本地口径重算受影响日期
   （`application/daySummary.ts`；`tests/day-summary.spec.ts` 把它的口径与 `store/day.ts` 的 `summary` 钉在一起）。
-- **页面 `/data`**（`DataPage.vue`，入口在今日页「更多」）：导出卡片（条目数 + 存储占用 + 校验和）、
+- **页面 `/data`**（`DataPage.vue`，入口在「我的」域 →「数据」）：导出卡片（条目数 + 存储占用 + 校验和）、
   导入卡片（选文件 → 预演 → 选策略 → 确认 → 报告）。
 - 验收：`npm test` 42 文件 / 394 项、`npm run build` 通过（新用例 `export-package.spec.ts` 5 项、
   `import-package.spec.ts` 13 项、`day-summary.spec.ts` 2 项、`data-page.spec.ts` 3 项）。
@@ -684,6 +685,36 @@ T4.4 留下的那笔欠账：模型给的六项数值是**估算**，手里有�
   分支 `main`、目录 `/ (root)`。设置没法由脚本代劳（需要仓库管理权限的 token）。
 - 口径写在根 `README.md` 的「部署与分发」与设计文档 §12；`AGENTS.md` 的命令区也加了一行。
 
+### 2.23 T4.7 落地：界面与菜单重构（导航树 + 五个域，2026-10-16）
+
+使用者的反馈很具体：**页面很零散、没有统一的树状路径** —— 「今日指导」只能从今日页那张卡片上的
+「生成今日指导」按钮进；设置相关的东西散在「今日页 → 更多」和设置页两处。查下来根因是
+**入口靠人肉在每个页面里补**：`/coach` `/plan` `/foods` `/targets` `/calibration` `/profile` `/data`
+七个页面不属于任何底部 tab，走进去连高亮都没有。
+
+改法是**先声明树、再渲染**：
+
+- **新增 `app/src/app/nav.ts`（导航树，唯一数据源）**：五个**域**（今日 / 记录 / 分析 / 我的 / 设置），
+  每个域含域根、高亮前缀 `match` 与页面清单（label / path / 路由名 / 可选父页 / 可选 `hidden`）。
+  底部 tab（`navTabs`）、页头导航条（`navLocation().chips`）、面包屑（`navLocation().crumbs`）全从它派生。
+- **底部 tab 由「今日 / 记录 / 趋势 / 报告 / 设置」改成五个域**（覆盖全部路由，归属靠 `domainOf()`）：
+  趋势与报告合并进「分析」（看数据 → 校准 → 调目标是同一条链路的三段）；档案 / 数据 / 关于收进「我的」；
+  设置只管「应用怎么跑」。于是不再有页面「一个 tab 都不亮」。
+- **页头自动给树状路径**（`components/AppHeader.vue`）：域导航条列出本域全部页面并高亮当前页 ——
+  域根页上它是「本域目录」，二级页上是「同层还有谁」；面包屑只在层级 ≥ 3 时出现
+  （报告详情：`分析 › 报告 › 报告详情`）。**页面里不再写「更多」入口。**
+- **新开「我的」域根 `pages/MePage.vue`（`/me`）**：档案与目标的现状 + 本机数据（schema / 食物库条目 /
+  种子版本 / 待办队列，从今日页搬来）+ 「还没档案 / 还没目标」时的出路。
+- **瘦身**：今日页拆掉「更多」卡片（8 个按钮横跨四个域）与「本地数据」卡片；「记录」域丢弃自带的
+  `van-tabs` + 「一句话 / 拍照」按钮（同级切换交给导航条，日期仍由 hub 统一持有）；
+  `/settings` 按主题分成四组（模型与 AI / 提醒 / 偏好与外观 / 不再追问的字段），
+  「关于与免责声明」挪去「我的」。
+- **样式基元**（`src/style.css`）：`.page-header` / `.domain-nav` / `.nav-chip` / `.crumbs` / `.crumb-link` /
+  `.group` / `.group-title` —— 页面不写导航样式。
+- **验收**：`tests/navigation-reachability.spec.ts` 重写成三条硬约束（路由表 ⇄ 导航树一一对应、
+  每条路由只归一个域、写死的跳转都指向存在的路由）；`tests/pages.spec.ts` 换成「每个页面都落在某个域
+  + 页头导航条 + 面包屑」的矩阵（21 条路由）；新增 `tests/me-page.spec.ts`；今日页 / 设置页的用例跟着搬。
+  口径写在设计文档 §8.1 / §8.5 / §12 / §13（T4.7）。
 ## 3. 部分完成：有明确缺口（优先补这些）
 
 | 编号 | 已实现 | 缺什么 | 建议落点 |
@@ -745,7 +776,7 @@ T3.8（B 级生成式推荐，两步）全部完成，见 §2.7 - §2.11 与 §2
 app/
   src/
     app/          启动流程（bootstrap：开库 + 写种子）、日期工具、设置、外观（theme）、图片压缩、
-                  budget（预算告警的确认弹窗，§2.21）
+                  budget（预算告警的确认弹窗，§2.21）、nav（导航树：域 → 页面，§2.23）
     domain/       纯计算与领域类型 —— 无 IO、不依赖 Vue / Dexie（对拍测试直接打这里）；
                   foodName / foodAudit 是食物库的名称归一化与疑似重复判定；foodEdit / nutrientRange 是手改数值的
                   解析与合理区间（区间与模型校验共用）；reminders 是提醒的判定、默认时间段与补记入口；
@@ -759,7 +790,7 @@ app/
                   工作区文本导出（workspaceExport）、日快照载荷与校验（snapshot）；
                   诊断信息导出（diagnostics，不含 token 与记录内容）；
                   markdown/ 记录文件解析与导出（record / export）
-    pages/        页面（含 AboutPage：免责声明与版本、PlanPage：B 级推荐清单）；components/ 共享组件；router/ 路由；store/ Pinia 会话态
+    pages/        页面（含 MePage：我的域根、AboutPage：免责声明与版本、PlanPage：B 级推荐清单）；components/ 共享组件；router/ 路由；store/ Pinia 会话态
   tests/          单元 / 对拍 / 组件测试（fixtures/ 与 helpers/ 同级）
   scripts/        构建期脚本：gen-seed.mjs / gen-expected.mjs / gen-icons.mjs / deploy-pages.mjs（发布）
 ```
@@ -811,7 +842,7 @@ app/
 | 导出包（JSON） | `io/exportPackage.ts` `buildExportPackage` / `canonicalJson` / `checksumOf` |
 | 导入（校验 / 预演 / 落库） | `io/importPackage.ts` `parseExportPackage` / `previewImport` / `applyImport` |
 | 不带 Pinia 的当日汇总重算 | `application/daySummary.ts` `buildSummaryForDate` / `recomputeDaySummary` |
-| 数据页（导出 / 导入界面） | `pages/DataPage.vue`（`/data`，入口在今日页「更多」） |
+| 数据页（导出 / 导入界面） | `pages/DataPage.vue`（`/data`；入口是「我的」域的导航条，见 `app/src/app/nav.ts`） |
 | 快照与单日回滚 | `application/snapshot.ts` `captureDay` / `restoreDaySnapshot` / `listSnapshotSummaries`；载荷在 `io/snapshot.ts`，存取与上限在 `data/repositories/snapshots.ts` |
 | 导出为工作区文本 | `io/workspaceExport.ts` `buildWorkspaceExport` / `bundleWorkspaceFiles` / `splitWorkspaceBundle`（读库、排序、打包） |
 | 工作区文本怎么渲染 | `io/markdown/export.ts` `renderRecordFile` / `renderFoodsCsv` / `renderProfileFile` / `renderTargetsFile` / `summaryBlockLines` |
@@ -825,7 +856,9 @@ app/
 | 离线队列界面（T4.6） | `data/repositories/pendingOps.ts` `listOps` / `removeOp`；界面在 `pages/DataPage.vue` |
 | 免责声明与版本（T4.6） | `pages/AboutPage.vue`（`/about`），路由注册在 `app/src/router/index.ts` |
 | 路由表 | `app/src/router/index.ts`（权威表格在 `docs/pwa-design.md` §8.1） |
-| 底部 tab 匹配规则 | `app/src/App.vue` 的 `tabs[].match` |
+| 导航树（域 → 页面，T4.7） | `app/src/app/nav.ts` `navDomains` / `navTabs` / `domainOf` / `navLocation` —— **新增页面先登记这里**，否则 `navigation-reachability.spec.ts` 会拦下来 |
+| 页头的域导航条与面包屑 | `components/AppHeader.vue`（按 `navLocation` 自动渲染，页面不写入口）；样式基元在 `src/style.css` |
+| 底部 tab 匹配规则 | `app/src/App.vue`（`tabs = navTabs`，高亮走 `domainOf(route.path)`） |
 
 ## 6. 环境与常用命令
 
@@ -834,7 +867,7 @@ app/
 ```bash
 npm install
 npm run dev       # 本地开发服务器
-npm test          # 单元 / 对拍 / 组件测试（59 文件 / 558 项）
+npm test          # 单元 / 对拍 / 组件测试（60 文件 / 553 项）
 npm run build     # vue-tsc 类型检查 + 生产构建（产物 dist/）
 npm run preview   # 预览构建产物 —— 测 PWA 行为请用这个，不要用 dev
 npm run deploy    # 构建（GitHub Pages 的 base）+ 推到部署仓库（§2.22；--dry-run 可先看）
@@ -870,14 +903,17 @@ npm run build
    新增用例也从合成数据出发；真实记录、档案与目标只存在于使用者设备上，不进仓库、也不写进文档。
 8. **接口只支持 OpenAI 兼容**（`{baseUrl}/chat/completions`），不做自定义请求模板。
 9. **不做日历 / `.ics` 导出**（OQ-8 / TD-09），提醒只保留应用内提醒与本地通知能力探测。
-10. **新增页面要同步三处**：`app/src/router/index.ts` 的路由、`app/tests/pages.spec.ts` 的挂载冒烟清单、
-    本文 §5.2 的函数索引。有链式 IndexedDB 读取的页面（如目标页）要留一个 `data-ready` 标记给测试用。
+10. **新增页面要同步四处**：`app/src/app/nav.ts` 的导航树（**先登记它**：tab 高亮、页头导航条、面包屑都读它）、
+    `app/src/router/index.ts` 的路由、`app/tests/pages.spec.ts` 的挂载冒烟清单、本文 §5.2 的函数索引。
+    忘了登记导航树的话，页面上「没有同级入口」看不出来，`tests/navigation-reachability.spec.ts` 会直接失败。
+    有链式 IndexedDB 读取的页面（如目标页）还要留一个 `data-ready` 标记给测试用。
 11. **队列重放必须传 `{ enqueueOnFailure: false }`**：`resolveFoods` / `parseLog` 默认在失败时写待办队列，
     重放路径再用默认值就成了「越重试越长」。以后新增可入队的任务，记得同样留一个开关。
 12. **队列执行器只自动回填「干净」结果**：可疑值（越界 / 宏量不自洽）与低置信度一律转 `needs-attention`，
     等用户确认（FR-407）。不要为了「自动」而把需要拍板的数值偷偷写进记录。
-13. **新页面用 `components/AppHeader.vue` 开头**（标题 + 副标题 + `back`）：底部 tab 只有五个入口，
-    二级页面必须自带退路。样式一律用 `style.css` 的全局类，页面 `<style scoped>` 只写这一页特有的东西。
+13. **新页面用 `components/AppHeader.vue` 开头**（标题 + 副标题 + `back`）：它是全页面共用的页头，
+    会按 `app/src/app/nav.ts` 自动渲染域导航条与面包屑 —— 所以**入口不写在页面里**，要加同级页就改导航树。
+    样式一律用 `style.css` 的全局类，页面 `<style scoped>` 只写这一页特有的东西。
 14. **报告的数值区永远本地算、永远不可编辑**：模型只写文字。要改数字就去改记录或走校准流程；
     界面上不给「编辑数值」的入口，避免报告和记录各说各话。
 15. **写库前把响应式对象拍平**：界面传下来的对象可能是 Vue 的响应式代理，直接 `put` 会
@@ -972,6 +1008,9 @@ npm run build
 - **Vant 开关关掉后 DOM 上没有 `van-switch--off`**：`van-switch` 只有打开时才有 `van-switch--on` 类，
   断言「关着」要写 `expect(html).not.toContain('van-switch--on')`，不要去等一个不存在的 off 类。
   `settings-page.spec.ts` / `data-page.spec.ts` 都按这个写。
+- **页头是全页面共用的**：`components/AppHeader.vue` 的根节点是 `.page-header`（它里面才是 `.page-head`），
+  域导航条与面包屑都在这里按 `app/src/app/nav.ts` 渲染。改它等于改所有页面的页头；想给某个页面加
+  「更多入口」之前，先想想是不是该登记进导航树（否则下一个人还得再摸一遍入口在哪 —— 这正是重构的起因）。
 
 ## 9. 建议的推进顺序
 
@@ -1009,11 +1048,12 @@ npm run build
 
 ## 10. 交接自检清单
 
-- [ ] `cd app && npm install && npm test`（59 文件 / 558 项；`workspace-script.spec.ts` 那条真跑 Python 的用例要给足超时，见 §8）
+- [ ] `cd app && npm install && npm test`（60 文件 / 553 项；`workspace-script.spec.ts` 那条真跑 Python 的用例要给足超时，见 §8）
 - [ ] `npm run build` 通过
 - [ ] `npm run preview` 能打开今日页，底部 tab 来回切换不卡死
+- [ ] 任一页面的页头都有一条域导航条（本域全部页面 + 当前页高亮）；报告详情顶上还有 `分析 › 报告 › 报告详情` 的面包屑
 - [ ] 今日页顶部有一次性的「装到主屏幕」提示，点「知道了」后刷新不再出现
-- [ ] 今日页「更多」里点「模型设置」能进（**不依赖有没有待补全**）；底部 tab「设置」里也有一个入口
+- [ ] 底部 tab「设置」→ 点「模型设置」能进（**不依赖有没有待补全**）；任一设置页的页头导航条里也有「模型与 AI」
 - [ ] 断网记一餐（会出现「待补全」）→ 配好模型 → 回今日页点「立即重试」，条目补齐且角标消失
 - [ ] 报告页点「本周」：没配模型时会先生说「数值区已经算好并保存」，配好模型后能进详情页看到数值区 + 文字区
 - [ ] 报告详情里模型编出来的数字被高亮成「待核对」；点「重新生成」后列表里有两版
@@ -1031,7 +1071,7 @@ npm run build
 - [ ] `/data` 点「导出工作区文本」：下载到的文本包里能看到 `records/2026-xx-xx.md`、`data/foods.csv`（填过档案 / 校准过还会多出 `profile.md` / `targets.md`）；把记录文件放进工作区跑 `python scripts/nutrition.py check --all` 报 0 个问题
 - [ ] `/data` 选日期拍一张快照 → 删掉那天的某条记录 → 点「回滚到这一天」并确认：记录回来，
       报告里同时给出「回滚后」与「被替换掉的原状态」（列表里也会多一条「回滚前自动快照」，能再滚回去）
-- [ ] 今日页「更多」→「食物库」：概况数字与库里一致；搜「牛奶」能搜到；点「模型」只留模型条目；
+- [ ] 「记录」域页头的导航条 →「食物库」：概况数字与库里一致；搜「牛奶」能搜到；点「模型」只留模型条目；
       疑似重复卡片里能看到 `鸡蛋(全蛋 生)` 与 `鸡蛋(水煮)` 并标着「数值完全相同」
 - [ ] 食物库里找一条**记过**的食物：删除按钮是禁用的（写着 FR-412）；找一条没记过的：能删掉；
       把某条「停用」后，在记录页的食材检索里搜不到它，切到「已停用」还能恢复

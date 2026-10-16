@@ -4,6 +4,11 @@
  *
  * 三块内容：进度（热量 / 蛋白 / 体重 / 训练）、记录入口、待办与提示。
  * 数字全部来自 `store` 的本地汇总；这里只负责排版，不做任何计算。
+ *
+ * 「当日汇总 / 今日指导 / 推荐清单」这几个同级页**不在这里给按钮**：以前末尾挂着一张
+ * 「更多」卡片，什么入口都往里塞（连隔壁域的档案、食物库也在里面），于是页面又长又乱、
+ * 还出现「今日指导只能靠一个按钮进」。现在页头按 `app/nav.ts` 自动渲染本域导航条，
+ * 同级页都在那一行里；本机数据（schema / 种子版本 / 队列）挪到了「我的」页。
  */
 
 import { computed, onMounted, ref } from 'vue'
@@ -16,19 +21,14 @@ import { buildReminderState } from '@/application/reminders'
 import { fmtNumber, fmtPercent } from '@/domain/format'
 import { reminderHint, reminderTarget } from '@/domain/reminders'
 import { formatDateCn, todayIso } from '@/app/date'
-import { db, SCHEMA_VERSION } from '@/data/db'
 import { getAdviceByDate } from '@/data/repositories/adviceLog'
-import { countFoods } from '@/data/repositories/foods'
 import { countOpenOps } from '@/data/repositories/pendingOps'
-import { META_KEYS, getMeta } from '@/data/meta'
 import type { AdviceRecord, ReminderSetting } from '@/domain/types'
 
 const router = useRouter()
 const store = useDayStore()
 
-const foodCount = ref(0)
 const queueCount = ref(0)
-const seedVersion = ref('-')
 const retrying = ref(false)
 /** 今天的 AI 指导（不在这里生成：生成要花钱，得用户点进 /coach 才会调用模型） */
 const advice = ref<AdviceRecord>()
@@ -37,9 +37,7 @@ const reminders = ref<ReminderSetting[]>([])
 
 onMounted(async () => {
   await store.load(todayIso())
-  foodCount.value = await countFoods()
   queueCount.value = await countOpenOps()
-  seedVersion.value = (await getMeta<string>(META_KEYS.seedVersion)) ?? '-'
   advice.value = await getAdviceByDate(todayIso())
   reminders.value = (await buildReminderState(todayIso())).pending
 })
@@ -208,40 +206,6 @@ async function retryQueue(): Promise<void> {
           立即重试
         </van-button>
         <van-button size="small" plain @click="router.push('/settings/model')">模型设置</van-button>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2 class="card-title">更多</h2>
-      <div class="link-grid">
-        <van-button size="small" plain block @click="router.push('/summary')">当日汇总</van-button>
-        <van-button size="small" plain block @click="router.push('/trend')">趋势</van-button>
-        <van-button size="small" plain block @click="router.push('/targets')">目标与校准</van-button>
-        <van-button size="small" plain block @click="router.push('/profile')">档案</van-button>
-        <van-button size="small" plain block @click="router.push('/settings/model')">模型设置</van-button>
-        <van-button size="small" plain block @click="router.push('/foods')">食物库</van-button>
-        <van-button size="small" plain block @click="router.push('/plan')">推荐清单</van-button>
-        <van-button size="small" plain block @click="router.push('/data')">数据</van-button>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2 class="card-title">本地数据</h2>
-      <div class="kv">
-        <span class="kv-key">数据库 schema</span>
-        <span class="kv-value">v{{ db.verno }} / 目标 v{{ SCHEMA_VERSION }}</span>
-      </div>
-      <div class="kv">
-        <span class="kv-key">食物库条目</span>
-        <span class="kv-value">{{ foodCount }}</span>
-      </div>
-      <div class="kv">
-        <span class="kv-key">种子库版本</span>
-        <span class="kv-value">{{ seedVersion }}</span>
-      </div>
-      <div class="kv">
-        <span class="kv-key">待办队列</span>
-        <span class="kv-value">{{ queueCount }}</span>
       </div>
     </div>
 

@@ -153,6 +153,76 @@ body {
   background: var(--brand-soft);
 }
 
+/* ---------- 树状路径（页头导航条 + 面包屑，2026-10-16 补） ---------- */
+
+/*
+ * 页头把「标题」和「我在哪一支」放在一起：`app/src/app/nav.ts` 是唯一的树，
+ * 这里只负责画。页面不必再各自写「更多」入口 —— 那正是页面变零散的原因。
+ */
+.page-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 2px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.crumb-link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--brand);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.crumb-here {
+  color: var(--text-muted);
+}
+
+.crumb-sep {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.domain-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.nav-chip {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.nav-chip:active {
+  background: var(--brand-soft);
+}
+
+.nav-chip--on {
+  border-color: var(--brand-line);
+  background: var(--brand-soft);
+  color: var(--brand-strong);
+  font-weight: 600;
+}
+
 /* ---------- 卡片 ---------- */
 
 .card {
@@ -195,6 +265,25 @@ body {
 
 .card-note {
   margin: 0 0 10px;
+}
+
+/*
+ * 分组：长页面（设置、我的）里把同一主题的卡收在一起。
+ * 分组之间用 `.page` 的 gap，组内紧一些，一眼能看出「这是几件事」。
+ */
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.group-title {
+  margin: 0;
+  padding-left: 2px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 /* ---------- 键值行 ---------- */

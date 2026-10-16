@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import { runQueue } from '@/application/queue'
 import { startReminderLoop } from '@/application/notify'
+import { domainOf, navTabs } from '@/app/nav'
 import { applyThemeFromSettings, startThemeSync } from '@/app/theme'
 import InstallHint from '@/components/InstallHint.vue'
 
@@ -47,24 +48,21 @@ onUnmounted(() => {
 })
 
 /**
- * 底部五个入口（docs/pwa-design.md §8.1）。
+ * 底部五个入口 = 五个**域**（docs/pwa-design.md §8.1），直接取自 `app/nav.ts` 的导航树：
+ * 加页面、改归属只改那一处，tab 的文案与高亮范围跟着一起变。
  *
  * 这里有两处专门为「能不能回到首页」服务：
- * 1. 高亮按**前缀分组**匹配：`/log/*` 全都归到「记录」，不会因为匹配不上而退回高亮「今日」。
+ * 1. 高亮按**域**匹配（`domainOf`）：`/log/*` 与 `/foods` 都归「记录」、`/reports/:id` 归「分析」，
+ *    不再有页面匹配不上、连个高亮都没有（重构前有七个）。
  * 2. 跳转一律走 `@click`，不依赖 tabbar 的 `change` 事件——`change` 只在选中项**变化**时触发，
  *    点一个已经高亮的 tab 就成了死键，用户会直接卡在没有返回入口的页面上。
  */
-const tabs = [
-  { name: 'today', label: '今日', icon: 'wap-home-o', to: '/today', match: ['/today', '/summary'] },
-  { name: 'log', label: '记录', icon: 'records-o', to: '/log', match: ['/log'] },
-  { name: 'trend', label: '趋势', icon: 'chart-trending-o', to: '/trend', match: ['/trend'] },
-  { name: 'reports', label: '报告', icon: 'notes-o', to: '/reports', match: ['/reports'] },
-  { name: 'settings', label: '设置', icon: 'setting-o', to: '/settings', match: ['/settings'] }
-]
+const tabs = navTabs
 
 const activeIndex = computed(() => {
-  // 匹配不到任何分组时不高亮（-1）；因为跳转走 click，仍然点得动，不会卡住
-  return tabs.findIndex((tab) => tab.match.some((prefix) => route.path.startsWith(prefix)))
+  // 匹配不到任何域时不高亮（-1）；因为跳转走 click，仍然点得动，不会卡住
+  const domain = domainOf(route.path)
+  return domain ? tabs.findIndex((tab) => tab.name === domain.key) : -1
 })
 
 function go(to: string): void {

@@ -44,8 +44,10 @@
 
 ## 界面
 
-- 新页面用 `app/src/components/AppHeader.vue` 开头（标题 + 副标题 + `back`）：底部 tab 只有五个入口，
-  二级页面必须自带退路。
+- **新增页面先登记导航树** `app/src/app/nav.ts`（域 → 页面）：底部 tab、页头的域导航条、面包屑都读它；
+  忘了登记 `tests/navigation-reachability.spec.ts` 会拦下来，页面上的入口也别自己写（那正是页面变零散的原因）。
+- 新页面用 `app/src/components/AppHeader.vue` 开头（标题 + 副标题 + `back`）：底部 tab 只有五个域
+  （今日 / 记录 / 分析 / 我的 / 设置），二级页面必须自带退路；同级入口由页头导航条自动给。
 - 样式用 `app/src/style.css` 里的全局基元（`.card` / `.kv` / `.stat` / `.progress` / `.data-table` 等），
   页面 `<style scoped>` 只写这一页特有的东西；页面间距由 `.page` / `.panel` 的 flex gap 负责。
 

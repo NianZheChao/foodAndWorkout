@@ -193,13 +193,6 @@ describe('设置页 · 偏好与名单（T4.6）', () => {
     })
   })
 
-  it('关于与免责声明入口能进 /about（FR-1608）', async () => {
-    const { wrapper, router } = await mountSettings()
-    await button(wrapper, '关于与免责声明').trigger('click')
-    await vi.waitFor(() => {
-      expect(router.currentRoute.value.path).toBe('/about')
-    })
-  })
 })
 
 describe('设置页 · 生成式推荐开关（T3.8 / FR-1003）', () => {

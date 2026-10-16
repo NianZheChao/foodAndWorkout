@@ -8,6 +8,10 @@
  *
  * 改一下就存一下（没有「保存」按钮）：这个页面每一项都是一个明确动作，
  * 多一个提交按钮只会让用户担心「我改的存了没有」。
+ *
+ * 2026-10-16 重构：页面按主题分成四组（模型与 AI / 提醒 / 偏好与外观 / 不再追问的字段）；
+ * 「档案 / 数据 / 关于」这些**关于我这个人**的页面挪去了「我的」域 —— 设置只管「应用怎么跑」，
+ * 于是这个 tab 不再是个什么都往里塞的筐，同级入口由页头那条导航条给（见 `app/src/app/nav.ts`）。
  */
 
 import { computed, onMounted, ref } from 'vue'
@@ -136,169 +140,170 @@ async function restoreField(field: string): Promise<void> {
 
 <template>
   <section class="page" :data-ready="loaded ? 'true' : 'false'">
-    <AppHeader title="设置" subtitle="全部开关都是本机的事，不上传任何东西" back />
+    <AppHeader title="设置" subtitle="应用怎么跑都在这一支：模型与 AI / 提醒 / 偏好与外观" />
 
-    <div class="card">
-      <h2 class="card-title">提醒</h2>
-      <p class="muted">
-        本应用<strong>没有服务端</strong>，所以做不了真正的推送（TD-09）：<strong>不提供日历 / .ics 导出</strong>，
-        应用关着的时候也不会响。能用的只有两种：打开应用时的「今天还没记的」清单，
-        以及系统支持且已授权时、应用打开着的时候按设定时间弹出的本地通知。
-      </p>
+    <div class="group">
+      <h2 class="group-title">模型与 AI</h2>
 
-      <div v-for="row in reminders" :key="row.id" class="reminder-row">
-        <div class="reminder-head">
-          <span class="reminder-label">{{ row.label }}</span>
-          <van-switch :model-value="row.enabled" size="20" @update:model-value="toggle(row)" />
-        </div>
-        <div class="reminder-time">
-          <input v-model="row.time" type="time" :disabled="!row.enabled" @change="persist()" />
-          <span class="muted">{{ reminderHint(row.id) }}</span>
-        </div>
-      </div>
-
-      <div class="kv">
-        <span class="kv-key">系统通知</span>
-        <span class="kv-value">{{ supportText }}</span>
-      </div>
-      <div class="actions">
-        <van-button
-          plain
-          block
-          :disabled="support !== 'default'"
-          @click="askPermission"
-        >
-          {{ permissionButton }}
-        </van-button>
-      </div>
-      <p class="muted">
-        同一件事一天只会响一次；到了设定时间、而且那一项当天还没完成，才会通知（FR-1105）。
-      </p>
-    </div>
-
-    <div class="card recommend-card">
-      <div class="card-head">
-        <h2 class="card-title">生成式推荐（B 级）</h2>
-        <span class="tag">{{ recommendEnabled ? '已开启' : '默认关' }}</span>
-      </div>
-      <p class="muted">
-        开启后才会出现「今天练什么 / 今天吃什么」这类<strong>具体清单</strong>（FR-801 / FR-802）。
-        它只读档案里的四项约束与本地摘要，不发送全量历史（FR-805），也不改你的热量目标（FR-807）。
-      </p>
-      <div class="actions">
-        <van-switch
-          :model-value="recommendEnabled"
-          size="22"
-          :disabled="!recommendEnabled && missingConstraints.length > 0"
-          @update:model-value="setRecommend"
-        />
-      </div>
-      <template v-if="missingConstraints.length">
-        <p class="muted warn-text">
-          开启前必须先补齐安全边界（FR-1003）：{{ missingConstraints.join(' / ') }} ——
-          否则可能出现「推荐了你不能吃的东西」。没有忌口 / 过敏就填「无」，别留空。
+      <div class="card">
+        <h3 class="card-title">模型设置</h3>
+        <p class="muted">
+          解析一句话 / 图片记录、生成报告与每日指导都走你自己配置的接口；token 只存本机，
+          不进导出包、不写日志。
         </p>
         <div class="actions">
-          <van-button size="small" plain block @click="$router.push('/profile')">去档案页填写</van-button>
+          <van-button type="primary" block @click="$router.push('/settings/model')">模型设置</van-button>
         </div>
-      </template>
-      <p v-else class="muted">
-        四项约束已齐。推荐里的食材克数与营养合计会由本地按食物库<strong>重新算一遍</strong>（FR-806）。
-      </p>
-      <div v-if="recommendEnabled" class="actions">
-        <van-button size="small" type="primary" plain block @click="$router.push('/plan')">
-          去生成今天的推荐清单
-        </van-button>
       </div>
-      <p class="muted">推荐不依赖食材库存，也不会问你「家里还有什么」（FR-803）。</p>
-    </div>
 
-    <div class="card">
-      <h2 class="card-title">偏好</h2>
-      <div class="kv">
-        <span class="kv-key">单位</span>
-        <span class="kv-value">重量 kg · 能量 kcal</span>
-      </div>
-      <p class="muted">
-        只支持 kg 与 kcal，不换算成斤或 kJ：记录口径统一，导出给仓库脚本才算得对（FR-1606）。
-      </p>
-
-      <div class="kv">
-        <span class="kv-key">一周从哪天算起</span>
-        <span class="kv-value">{{ weekStart === 1 ? '周一' : '周日' }}</span>
-      </div>
-      <div class="choice-row">
-        <van-button size="small" :type="weekStart === 1 ? 'primary' : 'default'" @click="setWeekStart(1)">
-          周一
-        </van-button>
-        <van-button size="small" :type="weekStart === 7 ? 'primary' : 'default'" @click="setWeekStart(7)">
-          周日
-        </van-button>
-      </div>
-      <p class="muted">
-        它只决定「哪一天算这一周的最后一天」（周末那条周报提醒）；报告与趋势固定按周一起算，两边不冲突。
-      </p>
-
-      <div class="kv">
-        <span class="kv-key">外观</span>
-        <span class="kv-value">{{ themeLabel }}</span>
-      </div>
-      <div class="choice-row">
-        <van-button
-          v-for="item in THEME_CHOICES"
-          :key="item.value"
-          size="small"
-          :type="theme === item.value ? 'primary' : 'default'"
-          @click="setTheme(item.value)"
-        >
-          {{ item.label }}
-        </van-button>
-      </div>
-      <p class="muted">选「跟随系统」时，系统切换深色会立刻跟上；这里改了也是立刻生效。</p>
-    </div>
-
-    <div class="card">
-      <h2 class="card-title">不再追问的字段</h2>
-      <p class="muted">
-        「一句话记录」里这几个字段不会再被追问（FR-1103），随时可以放回去重新问。
-        名单也能在「档案」页自由编辑（一行一条）。
-      </p>
-      <p v-if="!mutedFields.length" class="muted">名单是空的：该问的都会问。</p>
-      <ul v-else class="muted-list">
-        <li v-for="field in mutedFields" :key="field">
-          <code>{{ field }}</code>
-          <van-button size="mini" plain @click="restoreField(field)">恢复追问</van-button>
-        </li>
-      </ul>
-      <div class="actions">
-        <van-button size="small" plain block @click="$router.push('/profile')">去档案页编辑名单</van-button>
+      <div class="card recommend-card">
+        <div class="card-head">
+          <h3 class="card-title">生成式推荐（B 级）</h3>
+          <span class="tag">{{ recommendEnabled ? '已开启' : '默认关' }}</span>
+        </div>
+        <p class="muted">
+          开启后才会出现「今天练什么 / 今天吃什么」这类<strong>具体清单</strong>（FR-801 / FR-802）。
+          它只读档案里的四项约束与本地摘要，不发送全量历史（FR-805），也不改你的热量目标（FR-807）。
+        </p>
+        <div class="actions">
+          <van-switch
+            :model-value="recommendEnabled"
+            size="22"
+            :disabled="!recommendEnabled && missingConstraints.length > 0"
+            @update:model-value="setRecommend"
+          />
+        </div>
+        <template v-if="missingConstraints.length">
+          <p class="muted warn-text">
+            开启前必须先补齐安全边界（FR-1003）：{{ missingConstraints.join(' / ') }} ——
+            否则可能出现「推荐了你不能吃的东西」。没有忌口 / 过敏就填「无」，别留空。
+          </p>
+          <div class="actions">
+            <van-button size="small" plain block @click="$router.push('/profile')">去档案页填写</van-button>
+          </div>
+        </template>
+        <p v-else class="muted">
+          四项约束已齐。推荐里的食材克数与营养合计会由本地按食物库<strong>重新算一遍</strong>（FR-806）。
+        </p>
+        <div v-if="recommendEnabled" class="actions">
+          <van-button size="small" type="primary" plain block @click="$router.push('/plan')">
+            去生成今天的推荐清单
+          </van-button>
+        </div>
+        <p class="muted">推荐不依赖食材库存，也不会问你「家里还有什么」（FR-803）。</p>
       </div>
     </div>
 
-    <div class="card">
-      <h2 class="card-title">关于与免责声明</h2>
-      <p class="muted">
-        数据存在哪、估算值的边界、什么时候该去看医生 —— 都写在里面（需求 §9 / FR-1608）。
-      </p>
-      <div class="actions">
-        <van-button size="small" plain block @click="$router.push('/about')">关于与免责声明</van-button>
+    <div class="group">
+      <h2 class="group-title">提醒</h2>
+
+      <div class="card">
+        <p class="muted">
+          本应用<strong>没有服务端</strong>，所以做不了真正的推送（TD-09）：<strong>不提供日历 / .ics 导出</strong>，
+          应用关着的时候也不会响。能用的只有两种：打开应用时的「今天还没记的」清单，
+          以及系统支持且已授权时、应用打开着的时候按设定时间弹出的本地通知。
+        </p>
+
+        <div v-for="row in reminders" :key="row.id" class="reminder-row">
+          <div class="reminder-head">
+            <span class="reminder-label">{{ row.label }}</span>
+            <van-switch :model-value="row.enabled" size="20" @update:model-value="toggle(row)" />
+          </div>
+          <div class="reminder-time">
+            <input v-model="row.time" type="time" :disabled="!row.enabled" @change="persist()" />
+            <span class="muted">{{ reminderHint(row.id) }}</span>
+          </div>
+        </div>
+
+        <div class="kv">
+          <span class="kv-key">系统通知</span>
+          <span class="kv-value">{{ supportText }}</span>
+        </div>
+        <div class="actions">
+          <van-button
+            plain
+            block
+            :disabled="support !== 'default'"
+            @click="askPermission"
+          >
+            {{ permissionButton }}
+          </van-button>
+        </div>
+        <p class="muted">
+          同一件事一天只会响一次；到了设定时间、而且那一项当天还没完成，才会通知（FR-1105）。
+        </p>
       </div>
     </div>
 
-    <div class="card">
-      <h2 class="card-title">模型</h2>
-      <p class="muted">
-        解析一句话 / 图片记录、生成报告与每日指导都走你自己配置的接口；token 只存本机，
-        不进导出包、不写日志。
-      </p>
-      <div class="actions">
-        <van-button type="primary" block @click="$router.push('/settings/model')">模型设置</van-button>
+    <div class="group">
+      <h2 class="group-title">偏好与外观</h2>
+
+      <div class="card">
+        <div class="kv">
+          <span class="kv-key">单位</span>
+          <span class="kv-value">重量 kg · 能量 kcal</span>
+        </div>
+        <p class="muted">
+          只支持 kg 与 kcal，不换算成斤或 kJ：记录口径统一，导出给仓库脚本才算得对（FR-1606）。
+        </p>
+
+        <div class="kv">
+          <span class="kv-key">一周从哪天算起</span>
+          <span class="kv-value">{{ weekStart === 1 ? '周一' : '周日' }}</span>
+        </div>
+        <div class="choice-row">
+          <van-button size="small" :type="weekStart === 1 ? 'primary' : 'default'" @click="setWeekStart(1)">
+            周一
+          </van-button>
+          <van-button size="small" :type="weekStart === 7 ? 'primary' : 'default'" @click="setWeekStart(7)">
+            周日
+          </van-button>
+        </div>
+        <p class="muted">
+          它只决定「哪一天算这一周的最后一天」（周末那条周报提醒）；报告与趋势固定按周一起算，两边不冲突。
+        </p>
+
+        <div class="kv">
+          <span class="kv-key">外观</span>
+          <span class="kv-value">{{ themeLabel }}</span>
+        </div>
+        <div class="choice-row">
+          <van-button
+            v-for="item in THEME_CHOICES"
+            :key="item.value"
+            size="small"
+            :type="theme === item.value ? 'primary' : 'default'"
+            @click="setTheme(item.value)"
+          >
+            {{ item.label }}
+          </van-button>
+        </div>
+        <p class="muted">选「跟随系统」时，系统切换深色会立刻跟上；这里改了也是立刻生效。</p>
       </div>
     </div>
 
+    <div class="group">
+      <h2 class="group-title">不再追问的字段</h2>
+
+      <div class="card">
+        <p class="muted">
+          「一句话记录」里这几个字段不会再被追问（FR-1103），随时可以放回去重新问。
+          名单也能在「档案」页自由编辑（一行一条）。
+        </p>
+        <p v-if="!mutedFields.length" class="muted">名单是空的：该问的都会问。</p>
+        <ul v-else class="muted-list">
+          <li v-for="field in mutedFields" :key="field">
+            <code>{{ field }}</code>
+            <van-button size="mini" plain @click="restoreField(field)">恢复追问</van-button>
+          </li>
+        </ul>
+        <div class="actions">
+          <van-button size="small" plain block @click="$router.push('/profile')">去档案页编辑名单</van-button>
+        </div>
+      </div>
+    </div>
   </section>
 </template>
-
 <style scoped>
 .reminder-row {
   padding: 10px 0;

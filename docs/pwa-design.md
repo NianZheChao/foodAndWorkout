@@ -1012,35 +1012,68 @@ interface LlmTask<In, Out> {
 
 ## 8. 界面设计
 
-### 8.1 路由表
+### 8.1 路由表与导航树（2026-10-16 重构）
+
+**先声明树，再渲染。** 导航结构的唯一数据源是 `app/src/app/nav.ts`：底部 tab（域）由它派生，
+页头那条域导航条与面包屑由 `components/AppHeader.vue` 按当前路由读它渲染，
+`app/src/router/index.ts` 的路由表与它一一对应（`tests/navigation-reachability.spec.ts` 逐条比对）。
+**新增页面必须在这里登记**，否则「页面上没有同级入口」这种看不出来的毛病会直接变成测试失败。
+
+**五个域（= 底部 tab）**，覆盖全部路由，不留孤岛：
+
+| 域（tab） | 域根 | 域内页面 |
+| --- | --- | --- |
+| 今日 | `/today` | 当日汇总 `/summary` · 今日指导 `/coach` · 推荐清单 `/plan` |
+| 记录 | `/log` | 饮食 `/log/diet` · 训练 `/log/workout` · 身体 `/log/body` · 一句话记录 `/log/quick` · 食物库 `/foods` |
+| 分析 | `/trend` | 报告 `/reports`（详情 `/reports/:id`）· 目标与校准 `/targets` · 校准向导 `/calibration` |
+| 我的 | `/me` | 档案 `/profile` · 数据 `/data` · 关于与免责声明 `/about` |
+| 设置 | `/settings` | 模型与 AI `/settings/model` |
+
+分域依据是「这一页回答什么问题」：今日 = 今天怎么样；记录 = 把今天记下来（含食物库治理）；
+分析 = 看数据与调目标（趋势 → 校准 → 目标是一条链路的三段，报告是它的产出）；
+我的 = 关于我这个人（档案、我的数据、免责声明）；设置 = 应用怎么跑（模型、提醒、偏好与外观）。
+重构前「设置」同时装着这两类东西，`/coach` `/plan` `/foods` `/targets` `/calibration` `/profile` `/data`
+则不属于任何 tab —— 走进去连高亮都没有，入口散在各页顺手加的按钮上（例如「今日指导」只能靠
+今日页那张卡片上的「生成今日指导」进）。
+
+**页头 = 统一的树状路径**（都由 `AppHeader.vue` 自动渲染，页面不写入口）：
+
+1. **域导航条**（`.domain-nav`）：本域全部页面（含域根）的格子，当前页高亮。域根页上它是「本域目录」，
+   二级页上它是「同层还有谁」。
+2. **面包屑**（`.crumbs`）：只在层级 ≥ 3 时出现（`分析 › 报告 › 报告详情`），两级页面不重复画 ——
+   高亮的那颗格子已经说明位置。
+
+各页面明细：
 
 | 路由 | 页面 | 备注 |
 | --- | --- | --- |
-| `/today` | 今日（默认页） | 进度环、缺口提示、快捷录入、队列角标 |
-| `/log/:kind?` | 记录（饮食 / 训练 / 身体） | `kind` ∈ `diet\|workout\|body`，缺省 `diet`；顶部子 tab 切换，**日期由这一层统一持有**，切子 tab 不丢日期 |
+| `/today` | 今日（默认页，今日域根） | 进度环、缺口提示、快捷录入；「当日汇总 / 今日指导 / 推荐清单」由域导航条给，页面上不再挂「更多」卡片 |
+| `/log/:kind?` | 记录（记录域根，饮食 / 训练 / 身体） | `kind` ∈ `diet\|workout\|body`，缺省 `diet`；**同级切换即页头的域导航条**（`/log/diet` `/log/workout` `/log/body` `/log/quick` `/foods`），**日期由这一层统一持有**，切换不丢日期 |
 | `/log/quick` | 一句话 / 拍照记录 | 文本或图片 → 解析草稿 → 逐项确认（FR-110 / FR-111 / FR-113） |
 | `/summary/:date?` | 当日汇总 | 不完整时置顶提示 |
-| `/trend` | 趋势 | `?days=7\|14\|28` |
+| `/trend` | 趋势（分析域根） | `?days=7\|14\|28` |
 | `/coach` | 今日指导（A 级） | 摘要 v2 + 当日缺口 → 带依据的建议；含「将要发送的内容」预览与采纳/不采纳（§6.4.2 / FR-1602） |
 | `/plan` | 推荐清单（B 级） | 「今天练什么」+「今天还能吃什么」；默认关，开关开了且四项约束齐了才给生成（FR-1003）；数值一律按本地库复算（§6.5 / §6.6 / T3.8） |
-| `/reports` / `/reports/:id` | 报告列表 / 详情 | 待生成报告置顶 |
+| `/reports` / `/reports/:id` | 报告列表 / 详情 | 待生成报告置顶；详情是唯一的**三级**页面（面包屑 `分析 › 报告 › 报告详情`） |
 | `/foods` | 食物库 | 条目概况、按名称 / 来源（内置 / 模型 / 手工）/ 分类筛选、疑似重复分组提醒（T4.4）；停用与删除（被记录引用过的删不掉，只能停用） |
 | `/targets` | 目标 | 校准记录表 |
 | `/calibration` | 校准向导 | 本地数字 + AI 复核；幅度 / 频率 / 样本门禁，采纳才写目标（§6.7 / T3.5） |
+| `/me` | 我的（我的域根） | 档案与目标的现状 + 本机数据（schema / 食物库条目 / 种子版本 / 待办队列）；「档案 / 数据 / 关于」由域导航条给 |
 | `/profile` | 档案 | |
-| `/settings` | 设置 | 提醒（T4.5：开关 / 时间 / 通知权限 / 限制说明）、偏好（T4.6：单位 / 周起始日 / 外观）、不再追问名单（逐条恢复）、模型设置与「关于」入口 |
-| `/settings/model` | 模型设置 | URL / token / 连通性 / 用量 |
-| `/about` | 关于与免责声明 | 需求 §9 的七条原文 + 数据存在哪 + 版本（T4.6） |
 | `/data` | 数据 | 导出 / 导入 JSON（含预演与三种冲突策略，T4.1）、工作区文本导出（T4.2）、快照与单日回滚（T4.3）、离线队列界面与诊断信息导出（T4.6）+ 存储占用 |
+| `/about` | 关于与免责声明 | 需求 §9 的七条原文 + 数据存在哪 + 版本（T4.6） |
+| `/settings` | 设置（设置域根） | 按主题分四组：模型与 AI（模型设置入口 + 生成式推荐开关）、提醒（T4.5）、偏好与外观（T4.6）、不再追问的字段 |
+| `/settings/model` | 模型与 AI | URL / token / 连通性 / 用量 |
 
-底部 Tabbar 只保留五个入口：今日、记录、趋势、报告、设置；其余页面从入口页二级进入（避免移动端层级过深）。
+底部 Tabbar 与页头导航条的规则（2026-10-15 起，2026-10-16 推广到全部页面）：
 
-底部 Tabbar 的匹配与跳转规则（2026-10-15 修正，见 §13 T1.7）：
-
-- **高亮按前缀分组匹配**：`/log/*` 全部归到「记录」、`/summary` 归到「今日」；匹配不到任何分组时不高亮，但入口仍然可点。
-- **跳转一律走点击事件，不用 Tabbar 的 `change`**：`change` 只在选中项**发生变化**时触发，点一个已经高亮的 tab 就成了死键——用户会卡在子页面里回不到首页。
-- 由此，「今日」页的方格按钮（记饮食 / 记训练 / 记身体）跳到 `/log/diet|workout|body`，落地在「记录」的对应子 tab，用户随时能点底部「今日」返回。
-
+- **高亮按域匹配**：`domainOf(path)` 用 `match` 前缀（按整段比，`/me` 不会匹配 `/member`）判定页面属于哪个域；
+  `/log/*` 与 `/foods` 归「记录」、`/reports/:id` 归「分析」。每个页面**恰好归一个域**，不会出现「一个 tab 都不亮」
+  （由 `tests/navigation-reachability.spec.ts` 保证）。
+- **跳转一律走点击事件，不用 Tabbar 的 `change`**：`change` 只在选中项**发生变化**时触发，点一个已经高亮的
+  tab 就成了死键——用户会卡在子页面里回不到首页。
+- 由此，「今日」页的方格按钮（记饮食 / 记训练 / 记身体）跳到 `/log/diet|workout|body`，落地在「记录」域
+  对应面板，用户随时能点底部「今日」返回。
 ### 8.2 状态管理
 
 Pinia 只放**会话态与派生态**：
@@ -1135,9 +1168,13 @@ Pinia 只放**会话态与派生态**：
   `--van-background` / `--van-text-color` / `--van-cell-background` 等映射过来；`data-theme` 由
   `app/src/app/theme.ts` 按设置写到 `<html>`，同时给根节点加 / 去 `van-theme-dark`
   （Vant 的深色变量挂在这个类上，挂在根节点才能连 teleport 到 `body` 的弹窗一起照顾到）。
-- **共享组件**：`components/AppHeader.vue`（标题 / 副标题 / 返回 —— 底部 tab 只有五个入口，
-  二级页面必须自带退路）、`components/ChipSelect.vue`（会换行的标签按钮组，单选 / 多选共用）、
-  `components/EchartView.vue`（ECharts SVG 薄封装）、`components/DateNav.vue`、`components/InstallHint.vue`。
+- **树状路径的基元**（2026-10-16 补，见 §8.1）：`.page-header`（页头外壳）、`.crumbs` /
+  `.crumb-link` / `.crumb-here` / `.crumb-sep`（面包屑）、`.domain-nav` / `.nav-chip` / `.nav-chip--on`
+  （域导航条），以及长页面用的 `.group` / `.group-title`（分组标题）。
+- **共享组件**：`components/AppHeader.vue`（标题 / 副标题 / 返回 **+ 由导航树自动渲染的域导航条与面包屑**）、
+  `components/ChipSelect.vue`（会换行的标签按钮组，单选 / 多选共用）、`components/EchartView.vue`
+  （ECharts SVG 薄封装）、`components/DateNav.vue`、`components/InstallHint.vue`；
+  导航树本身在 `app/src/app/nav.ts`（**新增页面先登记它**）。
 
 ---
 
@@ -1270,6 +1307,7 @@ Pinia 只放**会话态与派生态**：
 ```
 src/
   app/                 启动、路由、全局布局、错误边界
+    nav.ts             导航树（域 → 页面）：底部 tab、页头域导航条、面包屑的唯一数据源（§8.1）
     theme.ts           外观（FR-1606）：三选一 → 写 <html data-theme> + van-theme-dark，跟随系统时监听变化
     budget.ts          预算告警的界面出口：把 runTask 的估算转成「是否继续」确认框（§6.9）
   domain/              纯计算（§5.1），无 IO
@@ -1312,7 +1350,7 @@ src/
     snapshot.ts        日快照载荷格式与结构校验（回滚前必须先过这里）
     diagnostics.ts     诊断信息导出（T4.6：版本 / 表条数 / 非机密配置 / 最近 20 条错误，不含 token 与记录内容）
   ui/
-    pages/             今日 / 记录 hub（饮食·训练·身体）/ 汇总 / 趋势 / 报告 / 食物库 / 设置 / 关于（阶段 4 起无占位页）
+    pages/             今日 / 记录 hub（饮食·训练·身体）/ 汇总 / 趋势 / 报告 / 食物库 / 我的 / 档案 / 设置 / 关于（阶段 4 起无占位页；导航见 app/nav.ts）
     components/        DateNav 等共享组件
     composables/ charts/  （阶段 3 接入）
   store/               Pinia（会话态与派生态，写操作后统一重算并落库汇总）
@@ -1399,8 +1437,9 @@ scripts/
 | T4.6 | 设置、免责声明、诊断信息导出 | ✅ 2026-10-16 完成：`app/theme.ts`（外观三选一 → 写 `<html data-theme>` + `van-theme-dark`）、`/settings` 的偏好卡片（单位只读说明 / 周起始日 / 外观）与「不再追问」逐条恢复、`pages/AboutPage.vue`（`/about`：需求 §9 七条原文 + 数据在哪 + 版本）、`io/diagnostics.ts` 诊断信息导出（不含 token 与记录内容）、`/data` 的离线队列界面与诊断导出。口径见 §9.4 / §10.2 的「实现补充」 |
 | FR-406 | 食物条目数值编辑 / 覆盖（DR-06 来源替换） | ✅ 2026-10-16 完成：`domain/foodEdit.ts`（草稿解析 / 校验 / 越界只提醒）+ `application/foodAdmin.ts` 的 `editFoodFacts`（来源替换成「手工」并留痕）+ `/foods` 每行的「改数值」内联编辑器。区间与模型校验共用 `domain/nutrientRange.ts`。口径见 §4.2 的「实现补充」 |
 
----
+| T4.7 | **界面与菜单重构：导航树 + 五域 IA**（2026-10-16） | ✅ 2026-10-16 完成：新增 `app/src/app/nav.ts`（导航树，唯一数据源）与页头自动渲染的域导航条 / 面包屑（`components/AppHeader.vue`）；底部 tab 由「今日 / 记录 / 趋势 / 报告 / 设置」改为**五个域**「今日 / 记录 / 分析 / 我的 / 设置」（覆盖全部路由，消灭七个「不高亮」的孤岛页）；新开「我的」域根 `pages/MePage.vue`（`/me`：档案与目标现状 + 本机数据）；`/settings` 按主题分四组、把「档案 / 数据 / 关于」挪去「我的」；「记录」域丢掉自带的 `van-tabs`、今日页拆掉「更多」卡片（入口统一由导航条给）。验收：`tests/navigation-reachability.spec.ts`（路由表 ⇄ 导航树一一对应 / 每页只归一个域 / 写死的跳转都指向存在的路由）、`tests/pages.spec.ts`（每个页面的 tab 高亮 + 导航条 + 面包屑）、`tests/me-page.spec.ts`。口径见 §8.1 |
 
+---
 ## 14. 风险与对策
 
 | 风险 | 影响 | 对策 |
