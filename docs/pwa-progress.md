@@ -5,8 +5,8 @@
 
 - 最后更新：2026-10-16
 - 应用版本：`0.1.0`（`app/package.json`）
-- 分支 / 最近提交：`main` / `900c532 feat: 手改食物数值（FR-406）：/foods 内联编辑器 + 来源替换`
-- 质量基线（2026-10-16 实测）：`npm test` 54 文件 / 510 项（`npm run build` 随之通过）；**全量并行跑时有两个已知偶发失败**（`quick-log-page.spec.ts` 的草稿断言、`workspace-script.spec.ts` 那条跑 Python 的用例撞 5 秒默认超时），单独重跑即可，见 §8；`workspace-script.spec.ts` 没装 Python 时整组跳过；`npm run build`（含 `vue-tsc -b` 类型检查，**测试文件也在类型检查范围内**）通过
+- 分支 / 最近提交：`main` / `c42cd12 feat: 生成式推荐（T3.8 第一步）：约束字段恢复 + /settings 开关 + 档案约束卡片`
+- 质量基线（2026-10-16 实测）：`npm test` 57 文件 / 540 项（`npm run build` 随之通过）；**全量并行跑时只剩一个已知偶发失败**（`workspace-script.spec.ts` 那条真去 `spawn` Python 的用例撞 5 秒默认超时），单独重跑即可，见 §8；`workspace-script.spec.ts` 没装 Python 时整组跳过；`npm run build`（含 `vue-tsc -b` 类型检查，**测试文件也在类型检查范围内**）通过
 
 ## 0. 三十秒速览
 
@@ -15,7 +15,7 @@
 | 阶段 0 | 地基：脚手架、PWA 接入（含安装引导）、Dexie schema + 仓储层、种子食物库 | ✅ 完成 |
 | 阶段 1 | 本地能力闭环：领域计算、三类记录页、当日汇总、趋势页 | ✅ 完成 |
 | 阶段 2 | 模型能力：配置与连通性、LLM 客户端、食物补全、自由文本 / 图片记录、澄清引擎、队列执行器 | 🟡 主体完成，2 处收尾未做（见 §3） |
-| 阶段 3 | 报告与指导：周报月报、每日指导（A 级）、校准向导、B 级推荐 | 🟡 报告（T3.1 - T3.3）、摘要 v2（T3.6）、每日指导（T3.7，见 §2.10）、校准向导（T3.5，见 §2.11）已完成；**推荐周计划取消**（T3.4）；B 级生成式推荐（T3.8）已动工：安全边界那一步（四项约束 + 默认关的开关）2026-10-16 落地（见 §2.19），剩下 `plan.training` / `plan.meal` 与 `/plan` 页未做 |
+| 阶段 3 | 报告与指导：周报月报、每日指导（A 级）、校准向导、B 级推荐 | ✅ 完成：报告（T3.1 - T3.3）、摘要 v2（T3.6）、每日指导（T3.7，见 §2.10）、校准向导（T3.5，见 §2.11）、B 级生成式推荐（T3.8：安全边界见 §2.19 + 两个任务与 `/plan` 页见 §2.20）。T3.4（推荐周计划）当天立、当天翻，最终由 T3.8 以「默认关的可选开关」形式实现 |
 | 阶段 4 | 数据治理：导入导出、快照回滚、食物库治理、提醒、设置 | ✅ 完成：导出 / 导入（T4.1，见 §2.12）、工作区文本导出（T4.2，见 §2.13）、快照回滚（T4.3，见 §2.14）、食物库治理（T4.4，见 §2.15）、提醒（T4.5，见 §2.16）、设置收尾（T4.6，见 §2.17）与手改食物数值（FR-406，见 §2.18）都已落地 —— **这一阶段没有欠账了** |
 
 一句话总结：**「配好档案与目标 → 用一句话或表单记一整天（含未知食物自动补全）→ 看当日汇总与趋势 →
@@ -26,8 +26,9 @@
 提醒也能用了（今日页的「今天还没记的」清单 + 应用打开时的本地通知），设置页把提醒的限制写清楚了，
 单位 / 周起始日 / 外观 / 「不再追问」名单都能自己调，免责声明在 `/about`、诊断信息与离线队列在 `/data`，
 食物库里模型给的数值也能用包装标签直接覆盖掉（FR-406），阶段 4 到此**全部收口、无欠账**；
-整份计划只剩 T3.8（B 级生成式推荐，默认关）——它已经动工，安全边界（四项约束 + 门禁 + 默认关的开关）
-在 §2.19 落地，接着做 `plan.training` / `plan.meal` 与 `/plan` 页。
+整份计划的最后一件 T3.8（B 级生成式推荐，默认关）也在 §2.19（安全边界）与 §2.20（两个任务 + `/plan` 页）
+落地了 —— **阶段 0 到阶段 4 全部完成，没有欠账**。B 级推荐按 FR-1003 保持默认关，要到
+「设置 → 生成式推荐」显式打开、且档案里四项约束填齐之后才会出现「今天练什么 / 今天吃什么」。
 
 ## 1. 文档地图
 
@@ -589,19 +590,57 @@ T4.4 留下的那笔欠账：模型给的六项数值是**估算**，手里有�
 > 下一步（T3.8 第二步）：`plan.training` / `plan.meal` 两个任务 + `/plan` 页 + 按食物库**本地复算**
 > 推荐里的克数与营养合计（FR-806）+ 采购清单（FR-804）。契约见设计文档 §6.5 / §6.6。
 
+### 2.20 T3.8 第二步：两个推荐任务与 `/plan` 页（2026-10-16）
+
+安全边界（§2.19）之后是任务本身：**「今天练什么」与「今天还能吃什么」**。这一档与前几档最大的不同是
+它给的是**具体清单**（练哪几个动作、吃哪几样各多少克），所以「数值本地算」这条纪律第一次直接落到
+用户照着做的东西上。
+
+- **两个契约** `llm/tasks/plan.ts`：`plan.training`（缺口 + 近 14 天肌群账 + 上次同动作写法 +
+  四项约束 → 动作清单）与 `plan.meal`（缺口 + 约束 + **常用食材的名称** → 食材克数与采购清单）。
+  输入里没有一条原始记录、也不问「家里还有什么」（FR-803 / FR-805）；输出上限 600 tokens（FR-1413）。
+- **门禁在应用层再判一次**（`application/plan.ts` 的 `gateMessage`）：开关没开、四项约束没齐都直接返回
+  失败，**一次模型都不调用**（`plan-run.spec.ts` 断言 `calls` 长度为 0）。界面把按钮禁用只是顺手。
+  两条原因拼在一起说，省得用户跑两趟。
+- **落库的是复核之后的清单**：`domain/plan.ts` 的 `reviewTrainingPlan` / `recomputeMealPlan` 在
+  `putPlan` 之前跑 —— 用档案里没有的器材的动作**剔除**并写进提示（它不能留在清单里等着被照做）；
+  没申报器材的动作留着但注明「本地核不了」；`weightKg` 超过上次同动作 +10% 写提示但**不拦**。
+- **数值一律本地**：时长 = 总组数 × 3 分钟 + 8 分钟热身（模型的估值只在偏差 >25% 时进提示）；
+  食谱逐行按食物库 `factsForGrams` 复算，命中不了库的行**不进合计**并列名（`missing`），模型自报的
+  `totalsPreview` 只留痕比对（偏差 >15% 提示「已按本地库显示」）；与今天缺口的对照也是本地减法
+  （`compareWithGap`，热量留 50 kcal 余量再判「超了」）。
+- **同名歧义宁可不认**：食材匹配三级（归一化相等 → 去括号主名相等 → 主名互为前缀且唯一），
+  库里同时有 `鸡蛋(全蛋 生)` 与 `鸡蛋(水煮)` 时「鸡蛋」不认 —— 猜错的数值比空着更糟。
+- **缓存与落库**：新增 `plans` 表（schema v4，`kind ∈ {training, meal}`），指纹用
+  `domain/fingerprint.ts`（与每日指导同一份 djb2 实现）；同日同类输入没变就复用，`force` 才重调；
+  一天一条，重新生成覆盖。导出包与导入都带上 `plans`，`/data` 的条目数多一行「份推荐」。
+- **`/plan` 页**：顶部先说门禁（开关 / 缺哪几项约束 / 去设置 / 去档案），再两张卡片
+  「今天练什么」「今天还能吃什么」，各带「将要发送的内容」预览与 token 估算；已生成的清单显示
+  focus、动作表（组次 / 重量 / RPE）、本地提示、四项合计、缺口对照与采购清单。入口两处：
+  今日页「更多 → 推荐清单」与设置页推荐卡片（开关打开后出现）。
+- **已知缺口（写进设计文档 §4.2 了）**：契约里的**伤病约束没有来源** —— 档案瘦身时下线了 `injuries`，
+  FR-1003 只要求恢复四项，所以输入里不含它，提示词里改成「用户没说不适就按普通计划」。
+- **顺手修掉两个偶发失败**：`quick-log-page.spec.ts` 与 `report-pages.spec.ts` 里那几处「等完落库就直接读 UI 文案」的断言，改成把断言本身也放进 `vi.waitFor`（文档 §8 里早写了修法，这回并行压力一上来就稳定复现）。
+  复算与偏差 / 缺口对照 / 器材剔除 / 加重与时长 / 肌群账与动作账）、`plan-run.spec.ts`（7：门禁两条 /
+  输入无原始记录 / 复核落库 / 缓存与 force / 失败不落库 / 食谱复算）、`plan-page.spec.ts`（6：
+  禁用与去处 / 缺项明细 / 清单渲染 / 缺口与采购 / 预览 / 返回）；`db.spec.ts` 与
+  `import-package.spec.ts` 的存储清单与空包 fixture 各补一项。口径见设计文档 §4.2 的两段「实现补充」。
+
 ## 3. 部分完成：有明确缺口（优先补这些）
 
 | 编号 | 已实现 | 缺什么 | 建议落点 |
 | --- | --- | --- | --- |
 | T2.5 | 每次调用都写 `llmLogs`；模型设置页汇总次数 / 失败数 / 输入输出估算，并可清空 | 单次任务超出预算 2 倍时的「是否继续」确认弹窗 | `app/src/llm/index.ts`（估算是现成的）+ `LogQuickPage` 的交互 |
+| FR-801 伤病约束 | 训练的器材白名单、加重 +10% 提示、恢复窗口都已落地（§2.20） | **伤病约束没有来源**：档案瘦身时下线了 `injuries`，FR-1003 只要求恢复四项，所以输入里不含它 | 要补得先改 `ProfileRecord` 与 FR-1003（见设计文档 §4.2 的「实现补充」），不能只在提示词里假装有 |
 
 ## 4. 未开始
 
+**没有未开始的任务。** 阶段 0 ~ 阶段 4 的任务都已落地；§3 那两条是明确的已知缺口，不是没开工。
+
 ### 4.1 阶段 3：报告与推荐（P1）
 
-| 任务 | 要做的事 | 依赖 / 注意 | 验收 |
-| --- | --- | --- | --- |
-| T3.8（第二步） | **`plan.training` / `plan.meal` + `/plan` 页**：按契约发缺口与约束，回来**本地复算**克数与营养（FR-806），给采购清单（FR-804） | 第一步（安全边界）已完成，见 §2.19：四项约束在档案里、开关默认关且四项没齐打不开；契约见设计文档 §6.5 / §6.6 | 开关关着时整条链路不可用；开着时输出动作 / 食谱清单，数值与本地库一致 |
+**表格已清空**：T3.1 - T3.3（报告）、T3.5（校准向导）、T3.6（摘要 v2）、T3.7（每日指导）、
+T3.8（B 级生成式推荐，两步）全部完成，见 §2.7 - §2.11 与 §2.19 / §2.20。
 
 > T3.1 - T3.3（报告摘要 / 周报月报 + 数字守卫 / 报告页）已于 2026-10-15 完成，见 §2.7。
 > **T3.4（推荐周计划）已取消**（2026-10-16 范围调整，见 §2.9）。
@@ -610,8 +649,9 @@ T4.4 留下的那笔欠账：模型给的六项数值是**估算**，手里有�
 > `previousDigest` 带上上一期数字；报告页已显示这些数字。口径与三处有意收窄见设计文档 §6.4.1。
 > **T3.7（每日指导 A 级）已于 2026-10-16 完成**，见 §2.10；契约口径与九条落地约定见设计文档 §6.4.2 的「实现补充」。
 > **T3.5（校准向导）已于 2026-10-16 完成**，见 §2.11；契约口径见设计文档 §6.7 的「实现补充」。
-> **T3.8 第一步（B 级推荐的安全边界）已于 2026-10-16 完成**，见 §2.19：四项约束回到档案、
-> 设置页开关默认关且**四项没齐打不开**（FR-1003）。只剩第二步：`plan.training` / `plan.meal` 与 `/plan` 页。
+> **T3.8（B 级生成式推荐）已于 2026-10-16 分两步完成**：第一步是安全边界（见 §2.19 —— 四项约束回到档案、
+> 设置页开关默认关且**四项没齐打不开**，FR-1003），第二步是两个任务与 `/plan` 页（见 §2.20 ——
+> `plan.training` / `plan.meal` + 器材白名单 / 加重与时长提示 + 按食物库本地复算 + 采购清单）。
 
 ### 4.2 阶段 4：数据治理与打磨（P1-P2）
 
@@ -634,7 +674,8 @@ T4.4 留下的那笔欠账：模型给的六项数值是**估算**，手里有�
 > 与「不再追问」逐条恢复，`/about` 放上需求 §9 的七条免责声明，`/data` 补上离线队列界面与诊断信息导出。
 > **FR-406（食物条目数值编辑 / 覆盖）已于 2026-10-16 完成**，见 §2.18：`/foods` 每行能「改数值」，
 > 六项缺一不可、越界只提醒，保存后来源替换成「手工」并留痕；摄入记录存的是快照，历史不受影响。
-> 阶段 4 的表格到此清空、**没有欠账**；整份计划只剩 **T3.8 B 级生成式推荐**（默认关）这一件。
+> 阶段 4 的表格到此清空、**没有欠账**；那时整份计划只剩的 **T3.8 B 级生成式推荐**（默认关）
+> 也已在同日完成，见 §2.19 / §2.20 —— **阶段 0 ~ 阶段 4 到此全部收口**。
 
 ## 5. 代码地图
 
@@ -647,15 +688,17 @@ app/
     domain/       纯计算与领域类型 —— 无 IO、不依赖 Vue / Dexie（对拍测试直接打这里）；
                   foodName / foodAudit 是食物库的名称归一化与疑似重复判定；foodEdit / nutrientRange 是手改数值的
                   解析与合理区间（区间与模型校验共用）；reminders 是提醒的判定、默认时间段与补记入口；
-                  recommend 是 B 级推荐的安全边界（四项约束齐没齐、怎么拆、怎么拼成输入行）
+                  recommend 是 B 级推荐的安全边界（四项约束齐没齐、怎么拆、怎么拼成输入行）；
+                  plan 是推荐的本地加工（FR-806 按库复算 / 器材白名单 / 加重与时长提示 / 缺口对照），
+                  fingerprint 是每日指导与推荐共用的缓存指纹
     data/         Dexie schema（db.ts）、仓储层（repositories/）、种子数据（seed/）
     llm/          OpenAI 兼容客户端、错误分类、文本抽取、任务注册表与流水线、tasks/
-    application/  用例层：本地优先、业务校验、落库编排（foodLibrary / foodResolve / foodAdmin / logParse / queue / report / coach / calibration / snapshot / reminders / notify / daySummary）
+    application/  用例层：本地优先、业务校验、落库编排（foodLibrary / foodResolve / foodAdmin / logParse / queue / report / coach / calibration / plan / snapshot / reminders / notify / daySummary）
     io/           导出包组装（exportPackage）、导入校验 / 预演 / 落库（importPackage）；
                   工作区文本导出（workspaceExport）、日快照载荷与校验（snapshot）；
                   诊断信息导出（diagnostics，不含 token 与记录内容）；
                   markdown/ 记录文件解析与导出（record / export）
-    pages/        页面（含 AboutPage：免责声明与版本）；components/ 共享组件；router/ 路由；store/ Pinia 会话态
+    pages/        页面（含 AboutPage：免责声明与版本、PlanPage：B 级推荐清单）；components/ 共享组件；router/ 路由；store/ Pinia 会话态
   tests/          单元 / 对拍 / 组件测试（fixtures/ 与 helpers/ 同级）
   scripts/        构建期脚本：gen-seed.mjs / gen-expected.mjs / gen-icons.mjs
 ```
@@ -682,6 +725,10 @@ app/
 | 手改食物数值（FR-406） | `domain/foodEdit.ts` `draftOfFood` / `reviewFactsEdit` / `applyFacts`；用例是 `application/foodAdmin.ts` 的 `editFoodFacts`，落库走 `data/repositories/foods.ts` 的 `saveFood` |
 | 六项数值的合理区间 | `domain/nutrientRange.ts` `NUTRIENT_RANGES` / `rangeChecks`（模型校验与用户手改共用同一份） |
 | B 级推荐的安全边界（T3.8） | `domain/recommend.ts` `missingRecommendConstraints` / `recommendConstraintsReady` / `isRecommendEnabled` / `parseConstraintList` / `recommendConstraintLines`；档案字段在 `pages/ProfilePage.vue`，开关在 `pages/SettingsPage.vue` |
+| B 级推荐的两个任务（T3.8） | `llm/tasks/plan.ts` `planTrainingTask` / `planMealTask`；用例 `application/plan.ts` `buildPlanContext` / `generateTrainingPlan` / `generateMealPlan` / `gateMessage` / `loadPlanRecords` |
+| 推荐的本地复核与复算 | `domain/plan.ts` `reviewTrainingPlan` / `recomputeMealPlan` / `matchFood` / `compareWithGap` / `MINUTES_PER_SET`；页面是 `pages/PlanPage.vue`（`/plan`），当日缓存在 `data/repositories/plans.ts` |
+| 推荐的输入聚合 | `domain/training.ts` `muscleRecency`（肌群组数 + 距上次多少小时）/ `recentExerciseLoads`（每个动作最近一次的写法） |
+| 缓存指纹 | `domain/fingerprint.ts` `fingerprintOf` / `stableStringify`（每日指导 `coachFingerprint` 与推荐共用） |
 | 未知食物落库 | `application/foodResolve.ts` `resolveFoods` / `toFood` |
 | 食物名称归一化 / 主名 | `domain/foodName.ts` `normalizeFoodName`（保留括号）/ `baseNameOf` / `looseFoodKey` |
 | 自由文本 → 草稿 | `application/logParse.ts` `parseLog` |
@@ -723,7 +770,7 @@ app/
 ```bash
 npm install
 npm run dev       # 本地开发服务器
-npm test          # 单元 / 对拍 / 组件测试（54 文件 / 510 项）
+npm test          # 单元 / 对拍 / 组件测试（57 文件 / 540 项）
 npm run build     # vue-tsc 类型检查 + 生产构建（产物 dist/）
 npm run preview   # 预览构建产物 —— 测 PWA 行为请用这个，不要用 dev
 npm run seed      # 从 ../data/foods.csv 重新生成内置食物库种子
@@ -833,10 +880,13 @@ npm run build
   两个容易漏的点：① **浅拷贝没用** —— `{ ...entry }` 只复制一层，里面的 `muscles` / `sets` 仍是 Proxy；
   ② 之前只在报告的 `saveEditedContent` 里做了深拷，等于把同一类 bug 留在了别处。
   现在统一在仓储写入层拍平（`src/data/plain.ts`），`tests/plain-write.spec.ts` 逐条覆盖各写入函数。
-- **`tests/quick-log-page.spec.ts` 是偶发失败的**（2026-10-15 观察：7 次重跑里 3 次失败，且每次失败的用例不一定是同一个）。
-  症状是断言 UI 文案时读到的还是旧内容：用例先用 `vi.waitFor` 等草稿落库，再用**一次** `flushPromises()` 就去读渲染结果，
-  在 20 个 worker 并行抢资源时这次等待不够。修法很直接——把断言本身也包进 `vi.waitFor`。
-  在此之前：看到它失败先重跑一次，**不要**据此判断自己的改动出了问题。
+- **「等完落库就直接读 UI」的断言一律要塞进 `vi.waitFor`**（2026-10-16 已按此修掉两处）。
+  `quick-log-page.spec.ts`（2026-10-15 观察：7 次重跑里 3 次失败，每次失败的用例还不一定是同一个）与
+  `report-pages.spec.ts`（同一形状：先 `await load()` 再读列表里的文案）都栽在这上面 —— 用例先用 `vi.waitFor`
+  等 DB，再用**一次** `flushPromises()` 就去读渲染结果，50 多个 worker 并行抢资源时这一次等待不够。
+  更隐蔽的一种是「记录齐了、标记还没齐」：`day.markPending` 是写完记录之后**另一次**写入，
+  于是 `toHaveLength(4)` 通过了而 `pendingFlag` 还是旧的。修法统一成把断言本身包进 `vi.waitFor`，
+  别去调大 `timeout` 或连甩几次 `flushPromises()`。这两处修完，全量并行跑只剩下面那条 Python 用例是偶发。
 - **全量跑 `npm test` 时，`workspace-script.spec.ts` 里「脚本自己写的 AUTO 区块与我们写的逐字一致」可能撞 5 秒默认超时**
   （2026-10-16 观察：49 个 worker 并行时该用例实测 6.5 秒；单独跑这个文件 8.9 秒内全过）。它**真的**会
   `spawn` Python 去跑 `nutrition.py`，机器忙的时候就会超。看到它失败先单独重跑该文件，别据此判断导出逻辑坏了；
@@ -884,7 +934,7 @@ npm run build
 
 ## 10. 交接自检清单
 
-- [ ] `cd app && npm install && npm test`（54 文件 / 510 项；`quick-log-page.spec.ts` 与 `workspace-script.spec.ts`
+- [ ] `cd app && npm install && npm test`（57 文件 / 540 项；`workspace-script.spec.ts`
       偶发失败时重跑一次即可，见 §8）
 - [ ] `npm run build` 通过
 - [ ] `npm run preview` 能打开今日页，底部 tab 来回切换不卡死

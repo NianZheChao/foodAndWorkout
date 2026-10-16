@@ -133,6 +133,7 @@
 | `modelConfig` | `'current'`（单例） | — | 接口地址、token、模型名等 | ❌ **绝不导出**（FR-1305） |
 | `drafts` | `id`（uuid） | `date`, `status` | 自由文本 / 图片解析出的**草稿**：澄清没答完可以当天接着答；草稿不是数据，不参与当日汇总（DR-48 / §6.12） | ✅ |
 | `adviceLog` | `id`（uuid） | `date`, `createdAt` | 每日指导（A 级，§6.4.2）：当日建议 + 依据 + 「采纳 / 不采纳」表态；**一天一条**，手动刷新覆盖当天那一条 | ✅ |
+| `plans` | `id`（uuid） | `date`, `kind` | B 级生成式推荐的**当日缓存**（§6.2 / T3.8）：`kind ∈ {training, meal}`，一天一类一条，重新生成覆盖；内容里存的是**本地复核之后**的清单 | ✅ |
 
 设计要点：
 
@@ -245,15 +246,42 @@ interface DayRecord {
 | 约束怎么进输入 | 拆分认换行 / 逗号 / 顿号 / 分号（`parseConstraintList`）；拼成给模型的行时缺项写「未填」而不是省略 | 用户怎么写都得认；省略会让模型以为「没有约束」 |
 | 存在哪 | 四项在 `profile`（长期事实），开关是 `settings.recommendEnabled`；两处都进了导出包与导入的合并白名单 | 「人是什么样」与「这次要不要用」分开存；导出 / 导入两边都不能丢 |
 | 导出 | `profile.md` 多一节「饮食与训练约束」（填了才写），front-matter 的键名不动 | 脚本读的键名不能改；正文给人看，机器读的那份在导出包里 |
+
+**实现补充（2026-10-16，T3.8 第二步已实现）**：两个推荐任务与 `/plan` 页。
+落点 `domain/plan.ts`（本地复核 / 复算，纯函数）+ `domain/training.ts` 的两段聚合（`muscleRecency` /
+`recentExerciseLoads`）+ `llm/tasks/plan.ts`（契约）+ `application/plan.ts`（用例 + 门禁 + 缓存）+
+`data/repositories/plans.ts`（`plans` 表）+ `pages/PlanPage.vue`（`/plan`）。契约见 §6.5 / §6.6。
+
+| 点 | 口径 | 为什么 |
+| --- | --- | --- |
+| 门禁在哪一层 | **应用层再判一次**（`gateMessage`）：开关没开、四项约束没齐都直接返回失败，一次模型都不调用；界面禁用按钮只是顺手 | FR-1003 写的是「否则不得开启」；界面绕得过去，单测要能钉住「门禁真的拦住了」 |
+| 门禁的两条一起说 | 开关没开 + 约束没齐时，两条原因拼接输出，不提前 return | 两件事都要做，一次说清省得用户跑两趟 |
+| 落库的是**复核之后**的清单 | `reviewTrainingPlan` / `recomputeMealPlan` 在 `putPlan` 之前跑；被剔除的动作、按库重算的数值一起进记录 | 否则界面看到的是模型原文，而 FR-806 要的恰恰是「展示的一定是本地算的那一份」 |
+| 器材怎么核 | 动作要**自己申报** `equipment`（契约里新增的字段）；本地做双向包含匹配（「哑铃」对上「一对哑铃（可调）」）；申报的器材**一个都不在**档案里就剔除整个动作并写进 `notices` | 模型不申报就只能猜动作要什么器材；「你根本没有这件器材」是必须剔除的，做成提示等于让它留在清单里等着被照做 |
+| 没申报器材的动作 | 留着，但打上 `equipmentNote`「没标器材，本地核不了」 | 剔除它比留着更糟（可能删掉一个自重动作）；但也不能装作核过了 |
+| 加重提示 | `weightKg` 超过**上次同动作**的 +10% 就写 `weightNote`，**不拦**；参照表按动作名归一化后索引，取近 14 天内最近一次 | FR-801 要「给具体加重」，加多少是用户的决定；但 +10% 以上值得让他先看一眼 |
+| 时长由本地算 | `总组数 × 3 分钟 + 8 分钟热身`（`MINUTES_PER_SET` / `WARMUP_MINUTES`）；模型的 `estimatedMinutes` 只在偏差 >25% 时进 `notices` | 时长是数，是数就得本地算（DR-45）；但排组的松紧有个人差异，所以按组数估而不是编一个精确值 |
+| 恢复窗口 | `hoursSinceLast < 48` 的肌群进 `needsRecovery`（发给模型）与 `recentMuscles`（提示）；按**天粒度 × 24** 算 | 记录里没有可靠的时刻；按天算的 48 小时等于「今天 + 昨天」，比假装精确更诚实 |
+| 食谱的合计 | 逐行按食物库 `factsForGrams` 算，命中不了的行**不进合计**并写进 `missing`；`totalsPreview` 只留痕比对（偏差 >15% 提示） | 宁少不臆造：显示出来的每一行都要能在库里指出来源，否则「本地复算」就是摆设 |
+| 食材名怎么匹配 | 三级：归一化相等 → 去括号主名相等 → 主名互为前缀且**唯一**；库里同时有 `鸡蛋(全蛋 生)` 与 `鸡蛋(水煮)` 时「鸡蛋」不认 | 猜错的数值比空着更糟（与 `matchFood` 的注释同一条理由） |
+| 停用的食物 | 不进候选（`buildFoodIndex` 跳过 `disabledFlag === 1`） | 停用是用户明说「别再用它算菜」（T4.4） |
+| 常用食材名 | 近 14 天记过的按次数取前 20；没有历史时用库里蛋白 ≥10g/100g 的前 20 条兜底；**只给名称** | FR-805 要求输入是本地摘要；给名称是为了让模型挑库里有的东西，不必把数值发过去 |
+| 与缺口的对比 | `compareWithGap` 本地算（热量 / 蛋白 / 钠 / 纤维），热量留 50 kcal 余量再判「超了」 | FR-802 的「与缺口对比」是本地的减法；按克数复算本来有几 kcal 零头，卡死会天天报超 |
+| 缓存 | 指纹 = 输入（`fingerprintOf`，与每日指导同一份实现）；同日同类指纹没变就复用，`force` 才重新调用 | 推荐是高频入口，每次都花钱受不了（FR-1409 / §6.2 的「当日缓存」） |
+| 一天一条 | 重新生成**覆盖**当天那一条（`getPlan` 取最新、`putPlan` 复用原 id） | 与每日指导一致；报告那种「留历史版本」会让「今天看哪一条」变含糊 |
+| 模型失败 | 不落库、不覆盖已有那一版 | 推荐是照着做的清单，写进去一条错的比没有更糟 |
+| 伤病约束 | **契约里有、本轮没有来源**：档案在 2026-10-16 的瘦身里下线了 `injuries`，FR-1003 只要求恢复四项，所以输入里不含伤病；提示词里改成「用户没说不适就按普通计划」 | 不编一个字段出来；这一条是已知缺口，补它要先改档案与 FR-1003，不能只在提示词里假装有 |
+
 ### 4.3 版本与迁移
 
-当前版本 **v3**：v1 是初始表结构；v2 新增 `drafts`（草稿）；v3 新增 `adviceLog`（每日指导，§6.4.2）。
+当前版本 **v4**：v1 是初始表结构；v2 新增 `drafts`（草稿）；v3 新增 `adviceLog`（每日指导，§6.4.2）；v4 新增 `plans`（推荐当日缓存，T3.8）。
 既有存储与数据原样保留。增量的写法是「每个版本只声明这一版新增的那张表」，Dexie 会沿用上一版已声明的存储：
 
 ```ts
 this.version(1).stores({ /* 全部初始表 */ })
 this.version(2).stores({ drafts: 'id, date, status' })   // 其余表沿用 v1
 this.version(3).stores({ adviceLog: 'id, date, createdAt' })  // 其余表沿用 v2
+this.version(4).stores({ plans: 'id, date, kind' })  // 其余表沿用 v3（B 级推荐当日缓存，T3.8）
 ```
 
 **反例（2026-10-16 真踩到）**：把第一行写成 `this.version(3).stores({ /* 全部表 + 新表 */ })`，
@@ -415,8 +443,8 @@ interface LlmTask<In, Out> {
 | `food.resolve` | 解析库中不存在的食物营养 | 用户确认后（FR-403） | 落 `foods`（FR-404） |
 | `report.weekly` | 周报结论与建议 | 用户点生成（FR-701） | 不缓存，可重新生成 |
 | `report.monthly` | 月报结论与建议 | 用户点生成（FR-702） | 不缓存 |
-| `plan.training` | 今天 / 本周练什么 | 用户点「今天练什么」 | 当日缓存 |
-| `plan.meal` | 今天还能吃什么 | 用户点「今天吃什么」 | 当日缓存 |
+| `plan.training` | 今天练什么（FR-801，T3.8） | 用户点「今天练什么」 | 当日缓存（`plans`，一天一条） |
+| `plan.meal` | 今天还能吃什么（FR-802，T3.8） | 用户点「今天吃什么」 | 当日缓存（`plans`，一天一条） |
 | `calibration.review` | 校准建议 | 报告页内（FR-907） | 不缓存 |
 | `log.parse` | 自由文本 → 摄入 / 训练草稿 | 用户提交一段描述（FR-110 / FR-208） | 不缓存（同一文本 5 分钟内去重） |
 | `log.parse.vision` | 图片 + 文字 → 摄入草稿 | 用户提交图片（FR-111） | 不缓存（图片不落库） |
@@ -636,9 +664,13 @@ interface LlmTask<In, Out> {
 
 ### 6.5 契约三：`plan.training`
 
-> **2026-10-16 状态**：B 级生成式推荐（T3.8）重新立项，本节与 §6.6 的契约**恢复生效**。
-> 第一步（FR-1003 的安全边界：档案恢复四项约束 + 默认关的开关 + 门禁）已落地，见 §4.2 的
-> 「实现补充」；任务本身与 `/plan` 页面按本节契约实现。
+> **2026-10-16 状态**：B 级生成式推荐（T3.8）**已实现**。第一步（FR-1003 的安全边界：档案恢复四项约束 +
+> 默认关的开关 + 门禁）与第二步（两个任务 + `/plan` 页 + 本地复算）都已落地，口径见 §4.2 的两段
+> 「实现补充」。下面几处是按本节契约实现时**有意补上**的，交接时不要改回去：
+>
+> - 动作多了 `equipment`（要用的器材）：本地白名单校验必须知道这个动作要用什么，不申报就只能猜；
+> - 落库的 `estimatedMinutes` 是**本地按组数算的**，模型写的那份只在偏差 >25% 时进提示；
+> - 伤病约束**没有来源**（档案瘦身时下线了 `injuries`，FR-1003 只要求恢复四项），输入里不含它。
 
 **输入**：今日缺口、近 14 天各肌群组数与最近训练时间、目标组数下限、可用器材、伤病约束、上次同动作的 `组x次x重量`。
 
@@ -660,7 +692,8 @@ interface LlmTask<In, Out> {
 
 ### 6.6 契约四：`plan.meal`
 
-> **2026-10-16 状态**：同 §6.5 —— B 级推荐重启后本节契约恢复生效。
+> **2026-10-16 状态**：同 §6.5 —— **已实现**。落库的 `totals` 是本地按食物库算的那一份（`totalsPreview`
+> 只留痕比对），命中不了库的行不进合计并写进 `missing`；采购清单原样保留（FR-804，本地不查库存）。
 
 **输入**：剩余热量与蛋白、钠是否超上限、纤维缺口、忌口 / 过敏、调味料有无、可用器材、每餐可投入时间、食物库中与蛋白质相关的高频条目名（只给名称，不给全量数值）。
 
@@ -907,10 +940,10 @@ interface LlmTask<In, Out> {
 
 | 点 | 口径 | 为什么 |
 | --- | --- | --- |
-| `data` 里到底有哪几块 | `days` / `intake` / `workout` / `foods` / `reports` / `targets` / `calibrations` / `profile` / `settings` / `snapshots` / `pendingOps` / **`drafts`** / **`adviceLog`** | 原设计写这行时还没有草稿与指导历史；两者都是用户自己的数据（草稿里还有他打的原文），不导出等于换设备就丢 |
+| `data` 里到底有哪几块 | `days` / `intake` / `workout` / `foods` / `reports` / `targets` / `calibrations` / `profile` / `settings` / `snapshots` / `pendingOps` / **`drafts`** / **`adviceLog`** / **`plans`** | 原设计写这行时还没有草稿、指导历史与推荐；三者都是用户自己的数据（草稿里还有他打的原文、推荐里有他看过的清单），不导出等于换设备就丢 |
 | 不导出的三块 | `modelConfig`（FR-1305 明令）、`llmLogs`（可能带调用痕迹）、`meta`（本机启动标记：种子版本等，换设备本来就该重算） | 导出包里出现 token 是安全事故，不是功能取舍 |
 | 校验和算在哪一层 | `sha256(规范化 JSON(data))`：对象键**递归排序**、丢掉 `undefined` 的键，数组保持原序 | 直接 `JSON.stringify` 会受键序影响 —— 同一份数据换个键序就得到不同校验和，导入时会把完好的文件判成"被改过" |
-| 版本兼容 | `formatVersion` 只用整数、只允许**向后**读（`<=` 当前版本）；老包缺 `drafts` / `adviceLog` 时补成空数组、不报错 | 加字段是加法，不该让旧文件失效；反过来（文件更新）必须拦住，因为可能有本应用读不懂的字段 |
+| 版本兼容 | `formatVersion` 只用整数、只允许**向后**读（`<=` 当前版本）；老包缺 `drafts` / `adviceLog` / `plans` 时补成空数组、不报错 | 加字段是加法，不该让旧文件失效；反过来（文件更新）必须拦住，因为可能有本应用读不懂的字段 |
 
 ### 7.2 工作区文本导出（可回迁）
 
@@ -988,6 +1021,7 @@ interface LlmTask<In, Out> {
 | `/summary/:date?` | 当日汇总 | 不完整时置顶提示 |
 | `/trend` | 趋势 | `?days=7\|14\|28` |
 | `/coach` | 今日指导（A 级） | 摘要 v2 + 当日缺口 → 带依据的建议；含「将要发送的内容」预览与采纳/不采纳（§6.4.2 / FR-1602） |
+| `/plan` | 推荐清单（B 级） | 「今天练什么」+「今天还能吃什么」；默认关，开关开了且四项约束齐了才给生成（FR-1003）；数值一律按本地库复算（§6.5 / §6.6 / T3.8） |
 | `/reports` / `/reports/:id` | 报告列表 / 详情 | 待生成报告置顶 |
 | `/foods` | 食物库 | 条目概况、按名称 / 来源（内置 / 模型 / 手工）/ 分类筛选、疑似重复分组提醒（T4.4）；停用与删除（被记录引用过的删不掉，只能停用） |
 | `/targets` | 目标 | 校准记录表 |
@@ -1242,9 +1276,11 @@ src/
     nutrientRange.ts   六项数值的合理区间（模型校验与手改共用同一份）
     reminders.ts       提醒判定（未完成项 / 到点判定 / 默认项补齐 / 补记入口，纯函数）
     recommend.ts       B 级推荐的安全边界（四项约束齐没齐 / 拆分 / 拼成输入行）
+    plan.ts            推荐的本地加工（FR-806 按库复算 / 器材白名单 / 加重与时长提示 / 缺口对照）
+    fingerprint.ts     缓存指纹（稳定序列化 + djb2）：每日指导与推荐共用同一份实现
   data/
     db.ts              Dexie schema 与版本迁移
-    repositories/      days / intake / workout / foods / reports / targets / profile / settings / snapshots
+    repositories/      days / intake / workout / foods / reports / targets / profile / settings / snapshots / adviceLog / plans
     seed/              foods.seed.json（由 data/foods.csv 构建期生成）
   llm/
     client.ts          OpenAI 兼容客户端：一次请求、超时、错误分类、baseUrl 归一化、并发 1
@@ -1252,7 +1288,7 @@ src/
     text.ts            剥 ``` 包裹、配平抽取 JSON、token 估算
     types.ts           LlmTask 契约（buildPayload / Zod schema / 输出上限）
     index.ts           runTask 流水线（校验重试、response_format 降级、调用日志）与 probeModel
-    tasks/             food.resolve.ts / log.parse.ts（report.* / plan.* / calibration.* 属阶段 3）
+    tasks/             每个契约一个文件：food.resolve / log.parse / report.* / coach.daily / calibration.review / plan.*
   application/         用例层：本地优先、业务校验、落库编排
     foodLibrary.ts     库内查找（精确 + 有限模糊）与「给模型看的名字清单」
     foodAdmin.ts       食物库治理（概况 / 停用 / 删除保护 FR-412）
@@ -1261,6 +1297,10 @@ src/
     snapshot.ts        快照与单日回滚（自动快照 / 整天替换 / 回滚前再拍一张）
     reminders.ts       提醒的事实来源（查库凑星期 / 当天记录 / 报告，判定交给 domain）
     notify.ts          本地通知（权限能力探测 + 一天只弹一次 + 应用内每分钟检查）
+    report.ts          报告用例（本地摘要 + 覆盖率 / 数字守卫 / 校准幅度三道闸门）
+    coach.ts           每日指导用例（依据校验 / 样本门禁 / 同日缓存 / 「采纳」表态）
+    calibration.ts     校准向导用例（拼输入 + 调模型；幅度与频率门禁在 domain/calibrationReview.ts）
+    plan.ts            推荐用例（门禁 FR-1003 → 请求 → 本地复核 → 落 plans 当日缓存）
   io/
     markdown/record.ts 记录文件解析（front-matter、章节、表格、组次文本）
     markdown/export.ts 导出回 Markdown / CSV（记录 + 档案 + 目标 + 食物库，含 AUTO 区块）
@@ -1333,11 +1373,11 @@ scripts/
 | T3.1 | `reportDigest`（本地摘要） | ✅ 2026-10-15：`domain/reportDigest.ts`，建在 `domain/trend.ts` 的区间聚合上；摘要不含原始记录（`tests/report-digest.spec.ts` 断言序列化后无食物名），与趋势逐项同源 |
 | T3.2 | `report.weekly` / `report.monthly` + 数字守卫 + 数值/文字分区渲染 | ✅ 2026-10-15：`llm/tasks/report.ts` + `domain/reportGuard.ts`；守卫只放行「摘要里的数 / 0-100% 百分比 / 天周组常量」，其余标「待核对」；`report-generate.spec.ts` 覆盖 |
 | T3.3 | 报告列表、历史版本、重新生成、人工编辑留痕 | ✅ 2026-10-15：`ReportsPage.vue` + `ReportDetailPage.vue`；重新生成新建记录、旧版本保留；人工编辑写 `editedByUser`，数值区不可编辑 |
-| T3.4 | ~~`plan.training` / `plan.meal` + 本地复算~~ | ❌ **2026-10-16 决定不做推荐功能**（连带 §6.5 / §6.6 只作历史记录，`/plan` 路由已删除，档案里与推荐相关的字段也已下线） |
+| T3.4 | ~~`plan.training` / `plan.meal` + 本地复算~~ | ❌ **2026-10-16 决定不做推荐功能**（连带 §6.5 / §6.6 只作历史记录，`/plan` 路由已删除，档案里与推荐相关的字段也已下线）。**该决定同日被 T3.8 推翻**：推荐作为默认关的 B 级功能重新立项并已实现 |
 | T3.5 | `calibration.review` + 校准向导（幅度与频率门禁） | ✅ 2026-10-16 完成：`CalibrationPage.vue`（`/calibration`）+ `llm/tasks/calibration.ts` + `domain/calibrationReview.ts`；三道本地门禁（样本 / 频率 / 幅度，超出 ±150 kcal 被拦下且不提供采纳）、向导不落库、采纳才 `applyCalibration`。口径见 §6.7 的「实现补充」 |
 | T3.6 | 摘要 v2（睡眠 / 精力 / 酸痛、RPE、有氧消耗、钠与纤维、上一期数字） | ✅ 2026-10-16 完成：口径与三处有意收窄见 §6.4.1；报告页已显示这些数字 |
 | T3.7 | **`coach.daily` 每日指导（A 级，P0）** + `/coach` 页 + `adviceLog`（schema v3） | ✅ 2026-10-16 完成：依据校验（NFR-13）、样本门禁、数字守卫与报告同源；同日缓存与手动刷新；采纳 / 不采纳进 `adviceLog`；没配模型时降级为本地缺口提示。口径见 §6.4.2 的「实现补充」 |
-| T3.8 | B 级生成式推荐（可选开关，默认关） | 🟡 进行中（2026-10-16）：第一步已完成 —— 档案按 FR-1003 恢复忌口 / 过敏 / 可用器材 / 每餐时间四项约束，`domain/recommend.ts` 判定「齐没齐」，设置页的开关**默认关且四项没齐就打不开**；第二步（`plan.training` / `plan.meal` + `/plan` 页 + 本地复算）未做。口径见 §4.2 / §6.5 |
+| T3.8 | B 级生成式推荐（可选开关，默认关） | ✅ 2026-10-16 完成（两步）：第一步是安全边界 —— 档案按 FR-1003 恢复忌口 / 过敏 / 可用器材 / 每餐时间四项约束，`domain/recommend.ts` 判定「齐没齐」，设置页开关**默认关且四项没齐就打不开**；第二步是任务本身 —— `llm/tasks/plan.ts` 两个契约 + `domain/plan.ts` 本地复核 / 复算（FR-806）+ `application/plan.ts`（门禁 → 请求 → 复核 → 落 `plans` 当日缓存）+ `pages/PlanPage.vue`（`/plan`）。口径见 §4.2 的两段「实现补充」与 §6.5 / §6.6 |
 
 ### 阶段 4：数据治理与打磨（P1-P2）
 

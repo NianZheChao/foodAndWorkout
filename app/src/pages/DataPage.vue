@@ -62,6 +62,7 @@ const COUNT_LABELS: Record<string, string> = {
   pendingOps: '条待办',
   drafts: '份草稿',
   adviceLog: '条指导',
+  plans: '份推荐',
   targets: '目标',
   profile: '档案',
   settings: '设置'
@@ -99,7 +100,7 @@ const ops = ref<PendingOp[]>([])
 const diagnostics = ref<{ report: DiagnosticsReport; name: string }>()
 
 async function loadCounts(): Promise<void> {
-  const [days, intake, workout, foods, reports, calibrations, pendingOps, drafts, adviceLog, targets, profile, settings] =
+  const [days, intake, workout, foods, reports, calibrations, pendingOps, drafts, adviceLog, plans, targets, profile, settings] =
     await Promise.all([
       db.days.count(),
       db.intake.count(),
@@ -110,11 +111,12 @@ async function loadCounts(): Promise<void> {
       db.pendingOps.count(),
       db.drafts.count(),
       db.adviceLog.count(),
+      db.plans.count(),
       db.targets.count(),
       db.profile.count(),
       db.settings.count()
     ])
-  counts.value = { days, intake, workout, foods, reports, calibrations, pendingOps, drafts, adviceLog, targets, profile, settings }
+  counts.value = { days, intake, workout, foods, reports, calibrations, pendingOps, drafts, adviceLog, plans, targets, profile, settings }
   snapshots.value = await listSnapshotSummaries(20)
   ops.value = await listOps()
 }

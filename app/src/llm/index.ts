@@ -14,6 +14,7 @@ import { calibrationReviewTask } from './tasks/calibration'
 import { coachDailyTask } from './tasks/coach'
 import { foodResolveTask } from './tasks/foodResolve'
 import { logParseTask } from './tasks/logParse'
+import { planMealTask, planTrainingTask } from './tasks/plan'
 import { reportMonthlyTask, reportWeeklyTask } from './tasks/report'
 import { logLlmCall } from '@/data/repositories/llmLogs'
 import { getModelConfig, isModelConfigured, saveModelConfig } from '@/data/repositories/modelConfig'
@@ -24,6 +25,8 @@ export const TASKS = {
   'coach.daily': coachDailyTask,
   'food.resolve': foodResolveTask,
   'log.parse': logParseTask,
+  'plan.meal': planMealTask,
+  'plan.training': planTrainingTask,
   'report.weekly': reportWeeklyTask,
   'report.monthly': reportMonthlyTask
 } as const

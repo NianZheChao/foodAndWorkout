@@ -37,6 +37,7 @@ describe('schema', () => {
         'meta',
         'modelConfig',
         'pendingOps',
+        'plans',
         'profile',
         'reports',
         'settings',
@@ -48,7 +49,7 @@ describe('schema', () => {
     probe.close()
   })
 
-  it('v1 → 最新版只新增 drafts / adviceLog，既有数据原样保留', async () => {
+  it('v1 → 最新版只新增 drafts / adviceLog / plans，既有数据原样保留', async () => {
     const name = 'migration-probe'
     const legacy = new Dexie(name)
     legacy.version(1).stores({
@@ -67,6 +68,7 @@ describe('schema', () => {
     const names = upgraded.tables.map((table) => table.name)
     expect(names).toContain('drafts')
     expect(names).toContain('adviceLog')
+    expect(names).toContain('plans')
     upgraded.close()
   })
 

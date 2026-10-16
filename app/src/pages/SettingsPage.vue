@@ -205,6 +205,11 @@ async function restoreField(field: string): Promise<void> {
       <p v-else class="muted">
         四项约束已齐。推荐里的食材克数与营养合计会由本地按食物库<strong>重新算一遍</strong>（FR-806）。
       </p>
+      <div v-if="recommendEnabled" class="actions">
+        <van-button size="small" type="primary" plain block @click="$router.push('/plan')">
+          去生成今天的推荐清单
+        </van-button>
+      </div>
       <p class="muted">推荐不依赖食材库存，也不会问你「家里还有什么」（FR-803）。</p>
     </div>
 

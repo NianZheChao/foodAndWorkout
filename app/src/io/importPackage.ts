@@ -37,7 +37,8 @@ const ARRAY_KEYS = [
   'snapshots',
   'pendingOps',
   'drafts',
-  'adviceLog'
+  'adviceLog',
+  'plans'
 ] as const
 
 /**
@@ -391,6 +392,7 @@ export async function applyImport(pkg: ExportPackage, options: ImportOptions): P
   bump('pendingOps', await unionInto(db.pendingOps, data.pendingOps))
   bump('drafts', await unionInto(db.drafts, data.drafts))
   bump('adviceLog', await unionInto(db.adviceLog, data.adviceLog))
+  bump('plans', await unionInto(db.plans, data.plans))
 
   if (!options.skipRecompute) {
     for (const date of [...touched].sort()) if (await recomputeDaySummary(date)) report.recomputedDays += 1

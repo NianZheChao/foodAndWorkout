@@ -145,7 +145,10 @@ describe('报告列表页', () => {
     await vi.waitFor(() => {
       expect(wrapper.text()).toContain('数值区已经算好并保存')
     })
-    expect(wrapper.text()).toContain('待生成文字')
+    // 列表那一条是 `generate()` 里 `await load()` 之后才渲染的，可能比通知文案晚一拍（见 §8）
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('待生成文字')
+    })
     const saved = (await listReports())[0]
     expect(saved.status).toBe('pending')
     expect(saved.digest.intake.avgKcal).toBeCloseTo(1700, 1)

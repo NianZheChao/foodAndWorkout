@@ -331,6 +331,129 @@ export interface AdviceRecord {
   updatedAt: number
 }
 
+/**
+ * 生成式推荐（B 级，T3.8 / §6.5 / §6.6）。
+ *
+ * 与 A 级指导的分工是**很清楚**的：指导只说「往哪使劲」，推荐给的是**具体清单**
+ * （练哪几个动作、吃哪几样、各多少克）。清单里带数字，所以数值一律本地复算（FR-806），
+ * 模型自报的合计只用来比对，不展示。
+ *
+ * 两种计划共用一张表（`plans`），靠 `kind` 区分：
+ * `training` = 今天练什么（FR-801），`meal` = 今天还能吃什么（FR-802）。
+ */
+/**
+ * 生成式推荐（B 级，T3.8 / §6.5 / §6.6）。
+ *
+ * 与 A 级指导的分工很清楚：指导只说「往哪使劲」，推荐给的是**具体清单**
+ * （练哪几个动作、吃哪几样、各多少克）。清单里带数字，所以数值一律本地复算（FR-806），
+ * 模型自报的合计只用来比对，不展示。
+ *
+ * 两种计划共用一张表（`plans`），靠 `kind` 区分：
+ * `training` = 今天练什么（FR-801），`meal` = 今天还能吃什么（FR-802）。
+ */
+export type PlanKind = 'training' | 'meal'
+
+/**
+ * 一条推荐食材（**本地复算之后**的形态，落库与展示都用这一份）。
+ *
+ * `facts` / `foodId` / `matchedName` 由本地按食物库补上：命中库里的条目才有，
+ * 命中不了（`facts` 为空）的行**不进合计**，只标出来让用户自己去食物库补（FR-806）。
+ */
+export interface PlanMealLine {
+  food: string
+  grams: number
+  dish?: string
+  /** 调味料行在界面上与主料分开列 */
+  seasoning?: boolean
+  /** 命中的食物库条目 */
+  foodId?: string
+  matchedName?: string
+  /** 本地按食物库算出的这一行的营养 */
+  facts?: NutritionFacts
+}
+
+export interface ShoppingItem {
+  item: string
+  amount: string
+  /** 不买也能做的替代（FR-804） */
+  substitute?: string
+}
+
+/**
+ * 「今天吃什么」的落库内容：食材行、本地的四项合计、采购清单。
+ *
+ * `totals` 是**本地按食物库算的**（FR-806），`totalsPreview` 是模型自报的那一份 —— 留着它
+ * 只为对账（偏差异常时界面要说得清「模型说的是多少」），展示永远用 `totals`。
+ */
+export interface PlanMealContent {
+  title: string
+  items: PlanMealLine[]
+  seasonings: PlanMealLine[]
+  totals: NutritionFacts
+  /** 本地库里找不到的食材名（这些行没进合计） */
+  missing: string[]
+  totalsPreview?: { kcal: number; proteinG: number; fatG: number; carbG: number }
+  shoppingList?: ShoppingItem[]
+}
+
+/**
+ * 一个推荐动作。`equipmentNote` / `weightNote` 是**本地复核**留下的提示
+ * （器材核不了、加重超过 +10%），只由 `domain/plan.ts` 写。
+ */
+export interface PlanTrainingExercise {
+  name: string
+  muscles: string[]
+  sets: number
+  reps: number
+  weightKg?: number
+  rpe?: number
+  /** 这个动作要用到的器材；本地拿它比对档案里的可用器材（§6.5 的本地处理） */
+  equipment?: string[]
+  /** 渐进说明，如「比上次 +2.5kg」 */
+  progression?: string
+  reason: string
+  equipmentNote?: string
+  weightNote?: string
+}
+
+/**
+ * 「今天练什么」的落库内容。
+ *
+ * `estimatedMinutes` 与契约里的同名字段**不是一回事**：这里是本地按组数算出来的
+ * （`domain/plan.ts` 的 `MINUTES_PER_SET`），模型写的那份只进 `notices` 做比对。
+ */
+export interface PlanTrainingContent {
+  focus: string
+  estimatedMinutes: number
+  exercises: PlanTrainingExercise[]
+  notes: string[]
+}
+
+export interface PlanRecordBase {
+  id: string
+  date: string
+  /** 「输入没变就不重复花钱」的指纹（与每日指导同一套，见 `domain/fingerprint.ts`） */
+  fingerprint: string
+  model?: string
+  taskVersion?: number
+  /** 本地闸门给出的提示（剔除了哪个动作、模型估算与本地库不一致等） */
+  notices?: string[]
+  createdAt: number
+  updatedAt: number
+}
+
+export interface TrainingPlanRecord extends PlanRecordBase {
+  kind: 'training'
+  content: PlanTrainingContent
+}
+
+export interface MealPlanRecord extends PlanRecordBase {
+  kind: 'meal'
+  content: PlanMealContent
+}
+
+export type PlanRecord = TrainingPlanRecord | MealPlanRecord
+
 export interface CalibrationRecord {
   id: string
   date: string

@@ -90,6 +90,7 @@ async function makePackage(
     pendingOps: [],
     drafts: [],
     adviceLog: [],
+    plans: [],
     ...data
   }
   return {

@@ -59,6 +59,7 @@ describe('页面挂载（阶段 1 已落地的路由）', () => {
     '/summary',
     '/trend',
     '/coach',
+    '/plan',
     '/reports',
     '/reports/rep_missing',
     '/foods',

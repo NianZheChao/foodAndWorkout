@@ -9,6 +9,7 @@
  * 允许它进界面，就等于把「本地数据说话」这条产品底线让掉了（NFR-13）。
  */
 
+import { fingerprintOf } from '@/domain/fingerprint'
 import { MIN_COVERAGE_RATIO } from '@/domain/reportDigest'
 import { flagUnknownNumbersInTexts } from '@/domain/reportGuard'
 import type { AdviceRecord, CoachAdviceItem, CoachContent, CoachTodayGap, ReportDigest } from '@/domain/types'
@@ -142,27 +143,12 @@ export function flagCoachNumbers(content: CoachContent, source: CoachSource): st
   return flagUnknownNumbersInTexts(coachContentTexts(content), source)
 }
 
-/** 稳定序列化：键排序后输出，保证同样的数据得到同样的指纹（键序不该影响缓存判断）。 */
-function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null'
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
-  const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, item]) => item !== undefined)
-    .sort(([a], [b]) => a.localeCompare(b))
-  return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`).join(',')}}`
-}
-
 /**
  * 缓存指纹（§6.4.2「频率与缓存」）：同一天数据没变就复用今天那一版，不重复调用模型。
- * djb2：不是密码学哈希，只要「数据变了指纹就变、没变就一样」够用。
+ * 实现（稳定序列化 + djb2）由 `domain/fingerprint.ts` 提供，推荐（B 级）用的是同一份。
  */
 export function coachFingerprint(source: CoachSource): string {
-  const text = stableStringify(source)
-  let hash = 5381
-  for (let index = 0; index < text.length; index += 1) {
-    hash = ((hash * 33) ^ text.charCodeAt(index)) >>> 0
-  }
-  return hash.toString(16).padStart(8, '0')
+  return fingerprintOf(source)
 }
 
 /** `history.advice` 的一条：只带用户**表过态**的建议。 */

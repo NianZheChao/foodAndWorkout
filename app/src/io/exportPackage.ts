@@ -22,6 +22,7 @@ import type {
   Food,
   IntakeEntry,
   PendingOp,
+  PlanRecord,
   ProfileRecord,
   ReportRecord,
   SettingsRecord,
@@ -51,6 +52,7 @@ export interface ExportData {
   pendingOps: PendingOp[]
   drafts: DraftRecord[]
   adviceLog: AdviceRecord[]
+  plans: PlanRecord[]
 }
 
 export interface ExportManifest {
@@ -103,7 +105,8 @@ export async function buildExportData(): Promise<ExportData> {
     snapshots,
     pendingOps,
     drafts,
-    adviceLog
+    adviceLog,
+    plans
   ] = await Promise.all([
     db.days.toArray(),
     db.intake.toArray(),
@@ -117,9 +120,10 @@ export async function buildExportData(): Promise<ExportData> {
     db.snapshots.toArray(),
     db.pendingOps.toArray(),
     db.drafts.toArray(),
-    db.adviceLog.toArray()
+    db.adviceLog.toArray(),
+    db.plans.toArray()
   ])
-  return { days, intake, workout, foods, reports, targets, calibrations, profile, settings, snapshots, pendingOps, drafts, adviceLog }
+  return { days, intake, workout, foods, reports, targets, calibrations, profile, settings, snapshots, pendingOps, drafts, adviceLog, plans }
 }
 
 function countsOf(data: ExportData): Record<string, number> {
@@ -134,6 +138,7 @@ function countsOf(data: ExportData): Record<string, number> {
     pendingOps: data.pendingOps.length,
     drafts: data.drafts.length,
     adviceLog: data.adviceLog.length,
+    plans: data.plans.length,
     targets: data.targets ? 1 : 0,
     profile: data.profile ? 1 : 0,
     settings: data.settings ? 1 : 0

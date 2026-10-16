@@ -186,6 +186,93 @@ export function rankMoves(moves: Record<string, MoveAggregate>): [string, MoveAg
   return Object.entries(moves).sort((a, b) => b[1].load - a[1].load || (a[0] < b[0] ? -1 : 1))
 }
 
+/** 一天的毫秒数；域层不 import `app/date`（那边依赖 dayjs，域层保持纯计算）。 */
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/** `YYYY-MM-DD` 之间相差多少天（正数表示 b 更晚）。 */
+function daysBetweenIso(a: string, b: string): number {
+  return Math.round((Date.parse(`${b}T00:00:00`) - Date.parse(`${a}T00:00:00`)) / DAY_MS)
+}
+
+/** 一个肌群近期的量：组数 + 距上次训练多少小时。 */
+export interface MuscleRecency {
+  muscle: string
+  sets: number
+  /** 距 `endDate` 的小时数（**按天粒度 × 24**：记录里没有可靠的时刻）；窗口内没练过则留空 */
+  hoursSinceLast?: number
+}
+
+/**
+ * 近期的肌群账：每个肌群有多少组、最近一次是几天前。
+ *
+ * `hoursSinceLast` 是「恢复优先」（FR-801：48 小时内练过的肌群排除）的判据，
+ * 所以它必须**在本地算好再进请求** —— 让模型自己减日期，得到的只会是幻觉。
+ */
+export function muscleRecency(entries: readonly WorkoutEntry[], endDate: string): MuscleRecency[] {
+  const sets = new Map<string, number>()
+  const lastDate = new Map<string, string>()
+  for (const entry of entries) {
+    if (entry.type === '拉伸') continue
+    const { sets: entrySets } = entrySetsAndLoad(entry)
+    for (const muscle of entry.muscles ?? []) {
+      sets.set(muscle, (sets.get(muscle) ?? 0) + entrySets)
+      const current = lastDate.get(muscle)
+      if (!current || entry.date > current) lastDate.set(muscle, entry.date)
+    }
+  }
+  return [...sets.entries()]
+    .map(([muscle, count]) => ({
+      muscle,
+      sets: count,
+      hoursSinceLast: lastDate.has(muscle) ? daysBetweenIso(lastDate.get(muscle) as string, endDate) * 24 : undefined
+    }))
+    .sort((a, b) => b.sets - a.sets || (a.muscle < b.muscle ? -1 : 1))
+}
+
+/** 一个动作最近一次怎么练的（渐进超负荷的参照）。 */
+export interface ExerciseRecency {
+  exercise: string
+  date: string
+  /** 组次写法，如 `4x10x60` / `3x12`（自重） */
+  volume: string
+  /** 最近一次用到的重量；自重或没写时留空 */
+  weightKg?: number
+  sets: number
+}
+
+/** 把一条记录还原成 `组x次x重量` 写法（导入的记录里通常已经有 `volumeRaw`）。 */
+function volumeTextOf(entry: WorkoutEntry): string {
+  if (entry.volumeRaw?.trim()) return entry.volumeRaw.trim()
+  const first = entry.sets?.[0]
+  if (!first) return ''
+  return `${entry.sets?.length ?? 1}x${first.reps}x${first.bodyweight || !first.weightKg ? '自重' : first.weightKg}`
+}
+
+/**
+ * 每个动作最近一次的写法（按日期倒序，最多 `limit` 条）。
+ *
+ * 同一个动作只留最近一次：推荐要给的是「比上次 +2.5kg」这种具体建议，
+ * 把两周里的每一次都发过去只会占 token，还容易让模型挑一个更早的参照。
+ */
+export function recentExerciseLoads(entries: readonly WorkoutEntry[], limit = 12): ExerciseRecency[] {
+  const latest = new Map<string, WorkoutEntry>()
+  for (const entry of entries) {
+    const exercise = entry.exercise?.trim()
+    if (!exercise) continue
+    const current = latest.get(exercise)
+    if (!current || entry.date > current.date) latest.set(exercise, entry)
+  }
+  return [...latest.entries()]
+    .map(([exercise, entry]) => ({
+      exercise,
+      date: entry.date,
+      volume: volumeTextOf(entry),
+      weightKg: entry.sets?.find((set) => set.weightKg)?.weightKg,
+      sets: entry.sets?.length ?? 1
+    }))
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.exercise < b.exercise ? -1 : 1))
+    .slice(0, limit)
+}
 const MUSCLE_KEYWORDS: readonly [RegExp, string][] = [
   [/卧推|飞鸟|夹胸|俯卧撑|推胸|胸推/, '胸'],
   [/划船|引体|下拉|硬拉|高拉|背部/, '背'],

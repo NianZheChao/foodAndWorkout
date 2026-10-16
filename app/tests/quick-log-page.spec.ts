@@ -140,12 +140,20 @@ describe('一句话记录：草稿 → 澄清 → 落库', () => {
     )
     await flushPromises()
 
+    // 库里还没有 西红柿 / 面条(干) / 食用油 的数值：先记下来标待补全，不卡住记录。
+    // 「待补全」是逐条写完记录后另写一次的（`day.markPending`）：四条记录齐了不代表
+    // 标记也齐了，并行跑时最后一条可能还差一拍，所以这条断言本身也要等（见 §8）。
+    await vi.waitFor(
+      async () => {
+        const current = await listIntakeByDate(DATE)
+        expect(current.filter((row) => row.pendingFlag === 1).length).toBe(3)
+      },
+      { timeout: 5000 }
+    )
+
     const rows = await listIntakeByDate(DATE)
     const oil = rows.find((row) => row.foodSnapshot.name === '食用油')
     expect(oil?.amount.grams).toBe(100)
-
-    // 库里还没有 西红柿 / 面条(干) / 食用油 的数值：先记下来标待补全，不卡住记录
-    expect(rows.filter((row) => row.pendingFlag === 1).length).toBe(3)
     const egg = rows.find((row) => row.foodSnapshot.name === '鸡蛋(全蛋 生)')
     expect(egg?.computed.kcal).toBeCloseTo(144 * 2.5, 5)
     expect(egg?.pendingFlag).toBeUndefined()
@@ -175,7 +183,9 @@ describe('一句话记录：草稿 → 澄清 → 落库', () => {
     )
     await flushPromises()
 
-    expect(wrapper.text()).toContain('这次没解析成功')
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('这次没解析成功')
+    })
     expect((await listOpenDrafts(DATE))[0].rawText).toBe(TEXT)
   })
 

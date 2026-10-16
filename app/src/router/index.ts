@@ -21,7 +21,12 @@ export const routes: RouteRecordRaw[] = [
     component: () => import('@/pages/CoachPage.vue'),
     meta: { title: '今日指导', spec: 'M8 A 级 / §6.4.2' }
   },
-  { path: '/reports', name: 'reports', component: () => import('@/pages/ReportsPage.vue'), meta: { title: '报告', spec: 'M7 FR-700' } },
+  {
+    path: '/plan',
+    name: 'plan',
+    component: () => import('@/pages/PlanPage.vue'),
+    meta: { title: '推荐清单', spec: 'M8 B 级 FR-801~807 / §6.5 / §6.6' }
+  },  { path: '/reports', name: 'reports', component: () => import('@/pages/ReportsPage.vue'), meta: { title: '报告', spec: 'M7 FR-700' } },
   {
     path: '/reports/:id',
     name: 'report-detail',
