@@ -16,6 +16,14 @@ import { todayIso } from '@/app/date'
 import { db } from '@/data/db'
 import { buildExportPackage, exportFileName, serializeExport, type ExportPackage } from '@/io/exportPackage'
 import {
+  buildWorkspaceExport,
+  bundleWorkspaceFiles,
+  workspaceExportFileName,
+  workspaceExportStats,
+  type WorkspaceExportStats,
+  type WorkspaceFile
+} from '@/io/workspaceExport'
+import {
   applyImport,
   parseExportPackage,
   previewImport,
@@ -46,6 +54,7 @@ const loaded = ref(false)
 const errorMessage = ref('')
 const counts = ref<Record<string, number>>({})
 const exported = ref<{ counts: Record<string, number>; checksum: string; name: string }>()
+const workspace = ref<{ files: WorkspaceFile[]; stats: WorkspaceExportStats; name: string }>()
 const picked = ref<{ pkg: ExportPackage; preview: ImportPreview; fileName: string }>()
 const strategy = ref<ConflictStrategy>('skip')
 const pickedDates = ref<string[]>([])
@@ -166,6 +175,33 @@ function toggleDate(date: string): void {
 function addedLabel(key: string): string {
   return `${COUNT_LABELS[key] ?? key} ${report.value?.added[key] ?? 0}`
 }
+
+/**
+ * 工作区文本导出（T4.2 / §7.2）：一个 Markdown 文本包，里面的文件与仓库脚本共用同一套格式。
+ * 和 JSON 包的区别：JSON 是给**应用**读回来用的，这一份是给**人和脚本**看的（FR-1206）。
+ */
+async function exportWorkspace(): Promise<void> {
+  busy.value = true
+  errorMessage.value = ''
+  try {
+    const files = await buildWorkspaceExport()
+    const name = workspaceExportFileName(todayIso())
+    workspace.value = { files, stats: workspaceExportStats(files), name }
+    if (typeof URL.createObjectURL === 'function') {
+      const url = URL.createObjectURL(new Blob([bundleWorkspaceFiles(files)], { type: 'text/markdown' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = name
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 0)
+    }
+    showToast({ message: '已生成工作区文本', position: 'bottom' })
+  } catch (cause) {
+    errorMessage.value = `导出失败：${cause instanceof Error ? cause.message : String(cause)}`
+  } finally {
+    busy.value = false
+  }
+}
 </script>
 
 <template>
@@ -195,6 +231,34 @@ function addedLabel(key: string): string {
           <span class="kv-key">校验和（sha256 前 12 位）</span>
           <span class="kv-value">{{ exported.checksum.slice(0, 12) }}…</span>
         </div>
+      </template>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">导出为工作区格式</h2>
+      <p class="muted">
+        生成一个 Markdown 文本包，里面是原工作区那一套文件：<code>records/YYYY-MM-DD.md</code>
+        （含由本地算好的 AUTO 汇总区块）、<code>data/foods.csv</code>、<code>profile.md</code>、
+        <code>targets.md</code>。格式与原脚本一致，放进工作区就能直接跑
+        <code>python scripts/nutrition.py check --all</code>，不被这个应用锁住。
+      </p>
+      <div class="actions">
+        <van-button plain block :loading="busy" @click="exportWorkspace">导出工作区文本</van-button>
+      </div>
+      <template v-if="workspace">
+        <div class="kv">
+          <span class="kv-key">文件名</span>
+          <span class="kv-value">{{ workspace.name }}</span>
+        </div>
+        <div class="kv">
+          <span class="kv-key">内容</span>
+          <span class="kv-value">
+            {{ workspace.stats.records }} 天记录 · {{ workspace.stats.foods }} 条食物 · 共 {{ workspace.stats.lines }} 行
+          </span>
+        </div>
+        <ul class="hint-list">
+          <li v-for="file in workspace.files" :key="file.path">{{ file.path }}</li>
+        </ul>
       </template>
     </div>
 

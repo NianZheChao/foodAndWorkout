@@ -5,8 +5,8 @@
 
 - 最后更新：2026-10-16
 - 应用版本：`0.1.0`（`app/package.json`）
-- 分支 / 最近提交：`main` / `ec942f5 feat: 校准向导 calibration.review（T3.5）+ /calibration 页 + 三道本地门禁`
-- 质量基线（2026-10-16 实测）：`npm test` 42 文件 / 394 项（**`quick-log-page.spec.ts` 仍是偶发失败，7 次重跑里出现 3 次，见 §8**）；`npm run build`（含 `vue-tsc -b` 类型检查）通过
+- 分支 / 最近提交：`main` / `4c44f0d feat: 导出包 / 导入（T4.1）+ /data 页 + 规范化校验和`
+- 质量基线（2026-10-16 实测）：`npm test` 44 文件 / 406 项（**`quick-log-page.spec.ts` 仍是偶发失败，7 次重跑里出现 3 次，见 §8**；`workspace-script.spec.ts` 没装 Python 时整组跳过）；`npm run build`（含 `vue-tsc -b` 类型检查）通过
 
 ## 0. 三十秒速览
 
@@ -16,12 +16,13 @@
 | 阶段 1 | 本地能力闭环：领域计算、三类记录页、当日汇总、趋势页 | ✅ 完成 |
 | 阶段 2 | 模型能力：配置与连通性、LLM 客户端、食物补全、自由文本 / 图片记录、澄清引擎、队列执行器 | 🟡 主体完成，2 处收尾未做（见 §3） |
 | 阶段 3 | 报告与指导：周报月报、每日指导（A 级）、校准向导、B 级推荐 | 🟡 报告（T3.1 - T3.3）、摘要 v2（T3.6）、每日指导（T3.7，见 §2.10）、校准向导（T3.5，见 §2.11）已完成；**推荐周计划取消**（T3.4），只剩 B 级推荐（T3.8，默认关）未做 |
-| 阶段 4 | 数据治理：导入导出、快照回滚、食物库治理、提醒、设置 | 🟡 导出 / 导入（T4.1，见 §2.12）已完成；工作区文本导出（T4.2）、快照回滚（T4.3）、食物库治理（T4.4）、提醒（T4.5）、设置（T4.6）未做 |
+| 阶段 4 | 数据治理：导入导出、快照回滚、食物库治理、提醒、设置 | 🟡 导出 / 导入（T4.1，见 §2.12）与工作区文本导出（T4.2，见 §2.13）已完成；快照回滚（T4.3）、食物库治理（T4.4）、提醒（T4.5）、设置（T4.6）未做 |
 
 一句话总结：**「配好档案与目标 → 用一句话或表单记一整天（含未知食物自动补全）→ 看当日汇总与趋势 →
 每天拿一份带依据的 AI 指导 → 用近 4 周的记录做一次校准 → 生成周报 / 月报」这条链路已经完整**；
 推荐周计划已决定不做（B 级生成式推荐默认关、未做）；数据能导出成 JSON 包、也能导回来，
-但工作区文本导出、快照回滚与设置页还没有。
+还能导出成原工作区那一套文本（`records/` + `foods.csv` + `profile.md` + `targets.md`，
+仓库脚本可直接消费），但快照回滚、食物库治理与设置页还没有。
 
 ## 1. 文档地图
 
@@ -368,6 +369,36 @@
   `import-package.spec.ts` 13 项、`day-summary.spec.ts` 2 项、`data-page.spec.ts` 3 项）。
   口径与七条落地约定见设计文档 §7.1 / §7.4 的「实现补充」。
 
++### 2.13 T4.2 落地：工作区文本导出（2026-10-16）
+
+阶段 4 的第二件事：把数据导成**原工作区那一套文本**，让数据不被这个应用锁住（FR-1206）。
+
+- **渲染** `io/markdown/export.ts`（纯转换，不碰 Dexie）：
+  - `renderRecordFile` → `records/YYYY-MM-DD.md`：front-matter（`date` / `weekday` / 体重 / 睡眠 / 精力 / 酸痛）
+    + `## 摄入` + `## 训练` + `## 状态与备注` + `## 待办` + `AUTO:SUMMARY` 区块；
+  - `renderFoodsCsv` → `data/foods.csv`（与 `gen-seed.mjs` 同一套列名，`source=llm` 的条目在 note 里注明来源与置信度）；
+    `renderProfileFile` / `renderTargetsFile` 按既有 front-matter 键名生成；
+  - `summaryBlockLines` 就是 AUTO 区块的正文，规则逐字对齐脚本的 `summary_lines`（口径仍全在本地，DR-45）。
+- **编排** `io/workspaceExport.ts`：读 `days` / `intake` / `workout` / `foods` / `profile` / `targets`，
+  日期取三张表的并集（只记了一餐、还没建 `days` 行的那天不该消失），行序按**内容**排
+  （摄入「餐次 → 菜品 → 食材」、训练「时间 → 动作」）—— `id` 只有毫秒时间戳加随机后缀，
+  同毫秒落库的两条顺序随机，按主键排会让同一份数据导出成不同的文件。
+- **交互** `/data` 的「导出为工作区格式」卡片：打包成**一个** `.md` 文本包（每个文件前一行
+  `<!-- thin-muscle-workspace: <相对路径> -->`，`splitWorkspaceBundle` 是它的逆运算），
+  给出文件名、天数 / 食物数 / 总行数与包内文件清单。不用 zip 的理由与 §7.1 相同。
+- **AUTO 区块的位置**：固定在 `## 待办` 之后。正文按 `##` 切段，区块因此落在「待办」段里
+  （`parseTodos` 只认 `- [ ]` / `- [x]` 行，不会被区块里的表格污染）；若让区块跟着备注段，
+  整段（含表格）会被 `parseRecord` 当备注读回来。
+- **顺手修掉一处口径漂移**：`domain/format.ts` 的 `fmtNumber` 原来用 `toFixed`（逢半进位），
+  而 Python 的 `'%.1f'` 逢半取偶 —— RPE 均值 7.25 我们写 7.3、脚本写 7.2，AUTO 区块当场对不上。
+  已改成精确十进制展开后的逢半取偶（3120 个样本逐一比对两边输出一致）；`docs/pwa-design.md` §5.2 补了这一行。
+- 验收：`npm test` 44 文件 / 406 项、`npm run build` 通过。新用例 `workspace-export.spec.ts` 8 项
+  （导出 → `parseRecord` 逐项往返、训练日的组次重量与容量负荷、AUTO 区块位置、CSV 转义、
+  文本包往返、统计口径）、`workspace-script.spec.ts` 3 项（把导出结果摊进临时工作区，
+  **真跑** `python scripts/nutrition.py check --all` 报 0 个问题；逐日比对我们写的与脚本 `totals --write`
+  写的 AUTO 区块；导出的 `foods.csv` 能被 `lookup` 认出来 —— 没装 Python 的环境整组跳过）、
+  `data-page.spec.ts` 补 1 项。口径与八条落地约定见设计文档 §7.2 的「实现补充」。
+
 ## 3. 部分完成：有明确缺口（优先补这些）
 
 | 编号 | 已实现 | 缺什么 | 建议落点 |
@@ -396,16 +427,16 @@
 
 | 任务 | 要做的事 | 依赖 / 注意 | 验收 |
 | --- | --- | --- | --- |
-| T4.2 | 工作区文本导出（`records/` / `foods.csv` / `profile.md` / `targets.md`） | `app/src/io/markdown/record.ts` 是**解析**侧，导出侧 `io/markdown/export.ts` 未写；必须生成 `AUTO:SUMMARY` 区块 | 可直接被原脚本消费 |
 | T4.3 | 快照与单日回滚 | `snapshots` 表已建但完全没用过 | 回滚后数据与快照一致 |
 | T4.4 | 食物库治理（`/foods`）：来源筛选、疑似重复、停用 | `foods` 表已有 `source` / `disabledFlag` 索引，`domain/foodName.ts` 已有归一化可做重复检测 | 被引用的条目不可删除 |
 | T4.5 | 提醒：应用内提醒 + 能力探测的本地通知 | 前提约束 TD-09：**无后端、不做 Web Push、不做 .ics / 日历导出**；设置页要写明限制 | 打开应用能看到当天未完成项；系统支持时按设定时间通知 |
 | T4.6 | `/settings`（提醒、单位、外观、不再追问名单）与 `/data` 剩下的部分（快照、队列、诊断信息导出）、免责声明 | 需求 §9 要求在应用内展示免责声明；`modelConfig` 已有诊断信息的雏形。**`/data` 的导出 / 导入已经做了**（T4.1） | 需求 §9 与 FR-1608 可验 |
 
 > **T4.1（导出包 / 导入）已于 2026-10-16 完成**，见 §2.12。
-> 「导出后 Python `check --all` 通过」属 **T4.2**（工作区文本导出），T4.1 只做结构化 JSON ——
-> 它的验收是「往返一致」，由 `tests/import-package.spec.ts` 覆盖。
-> 阶段 4 现在从 **T4.2 工作区文本导出**接着做。
+> **T4.2（工作区文本导出）已于 2026-10-16 完成**，见 §2.13：「导出后 Python `check --all` 通过」
+> 这条验收是它的，由 `tests/workspace-script.spec.ts` 真跑脚本覆盖（T4.1 只做结构化 JSON，
+> 验收是「往返一致」，由 `tests/import-package.spec.ts` 覆盖）。
+> 阶段 4 现在从 **T4.3 快照与单日回滚**接着做。
 
 ## 5. 代码地图
 
@@ -419,7 +450,8 @@ app/
     data/         Dexie schema（db.ts）、仓储层（repositories/）、种子数据（seed/）
     llm/          OpenAI 兼容客户端、错误分类、文本抽取、任务注册表与流水线、tasks/
     application/  用例层：本地优先、业务校验、落库编排（foodLibrary / foodResolve / logParse / queue / report / coach / calibration）
-    io/           导出包组装（exportPackage）、导入校验 / 预演 / 落库（importPackage）；markdown/ 记录文件解析
+    io/           导出包组装（exportPackage）、导入校验 / 预演 / 落库（importPackage）；
+                  工作区文本导出（workspaceExport）；markdown/ 记录文件解析与导出（record / export）
     pages/        页面；components/ 共享组件；router/ 路由；store/ Pinia 会话态
   tests/          单元 / 对拍 / 组件测试（fixtures/ 与 helpers/ 同级）
   scripts/        构建期脚本：gen-seed.mjs / gen-expected.mjs / gen-icons.mjs
@@ -461,6 +493,9 @@ app/
 | 导入（校验 / 预演 / 落库） | `io/importPackage.ts` `parseExportPackage` / `previewImport` / `applyImport` |
 | 不带 Pinia 的当日汇总重算 | `application/daySummary.ts` `buildSummaryForDate` / `recomputeDaySummary` |
 | 数据页（导出 / 导入界面） | `pages/DataPage.vue`（`/data`，入口在今日页「更多」） |
+| 导出为工作区文本 | `io/workspaceExport.ts` `buildWorkspaceExport` / `bundleWorkspaceFiles` / `splitWorkspaceBundle`（读库、排序、打包） |
+| 工作区文本怎么渲染 | `io/markdown/export.ts` `renderRecordFile` / `renderFoodsCsv` / `renderProfileFile` / `renderTargetsFile` / `summaryBlockLines` |
+| 显示数值的舍入 | `domain/format.ts` `fmtNumber`（1 位小数、**逢半取偶**，对齐脚本的 `'%.1f'`） |
 | 路由表 | `app/src/router/index.ts`（权威表格在 `docs/pwa-design.md` §8.1） |
 | 底部 tab 匹配规则 | `app/src/App.vue` 的 `tabs[].match` |
 
@@ -471,7 +506,7 @@ app/
 ```bash
 npm install
 npm run dev       # 本地开发服务器
-npm test          # 单元 / 对拍 / 组件测试（42 文件 / 394 项）
+npm test          # 单元 / 对拍 / 组件测试（44 文件 / 406 项）
 npm run build     # vue-tsc 类型检查 + 生产构建（产物 dist/）
 npm run preview   # 预览构建产物 —— 测 PWA 行为请用这个，不要用 dev
 npm run seed      # 从 ../data/foods.csv 重新生成内置食物库种子
@@ -587,14 +622,15 @@ npm run build
    数字复用报告的 28 天摘要，三道本地门禁 + 采纳才 `applyCalibration`。（T3.4 推荐已取消，见 §2.9。）
 6. ~~T4.1 导出包 / 导入~~ —— 2026-10-16 已完成（见 §2.12）：`/data` 页导出 JSON 包（不含 token 与调用日志）、
    导入走「校验 → 预演 → 三种冲突策略 → 报告」。
-7. **T4.2 → T4.3** —— 工作区文本导出（能被原脚本消费）与快照回滚，是「数据在本地」剩下的两条安全带。
+7. ~~T4.2 工作区文本导出~~ → **T4.3 快照回滚** —— 快照与单日回滚是「数据在本地」剩下的安全带
+   （T4.2 已于 2026-10-16 完成，见 §2.13）。
 8. **T4.4 - T4.6** 收尾打磨。**T3.8（B 级推荐）**放最后：它默认关，且开启前必须先恢复约束字段。
 
 每一步都能独立验收；建议每完成一项就更新本文第 2 / 3 / 4 节的表格，以及 `docs/pwa-design.md` §13 的状态标记。
 
 ## 10. 交接自检清单
 
-- [ ] `cd app && npm install && npm test`（42 文件 / 394 项；`quick-log-page.spec.ts` 偶发失败时重跑一次即可，见 §8）
+- [ ] `cd app && npm install && npm test`（44 文件 / 406 项；`quick-log-page.spec.ts` 偶发失败时重跑一次即可，见 §8）
 - [ ] `npm run build` 通过
 - [ ] `npm run preview` 能打开今日页，底部 tab 来回切换不卡死
 - [ ] 今日页顶部有一次性的「装到主屏幕」提示，点「知道了」后刷新不再出现
@@ -613,6 +649,7 @@ npm run build
 - [ ] 记满 2 周以上再生成校准建议：能看方向 / 幅度 / 理由，点「采纳」后目标更新、校准记录多一行并回 `/targets`
 - [ ] 只记几天就生成校准建议：显示「样本不足」等门禁原因，且**没有**「采纳」按钮
 - [ ] `/trend` 切 7 / 14 / 28 天，URL 里的 `?days=` 跟着变；空区间显示「未记录」而不是 0
+- [ ] `/data` 点「导出工作区文本」：下载到的文本包里能看到 `records/2026-xx-xx.md`、`data/foods.csv`（填过档案 / 校准过还会多出 `profile.md` / `targets.md`）；把记录文件放进工作区跑 `python scripts/nutrition.py check --all` 报 0 个问题
 - [ ] `/profile` 填一份档案 → `/targets` 用首次估算写入目标，并在「校准记录」里看到一行
 - [ ] 在 `/targets` 把热量改掉 200 kcal：确认卡片要出现「超过 ±150 kcal」与「样本可能不足」提示
 - [ ] 在 `/settings/model` 填入自己的 OpenAI 兼容接口，连通性测试通过

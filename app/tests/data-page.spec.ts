@@ -79,6 +79,26 @@ describe('数据页：导出', () => {
   })
 })
 
+describe('数据页：导出为工作区格式', () => {
+  it('生成文本包，列出包内文件与行数', async () => {
+    await seed()
+    const wrapper = await mountPage()
+
+    await button(wrapper, '导出工作区文本').trigger('click')
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('薄肌计划-工作区-')
+    })
+    const card = wrapper.findAll('.card').find((item) => item.text().includes('导出为工作区格式'))
+    if (!card) throw new Error('找不到「导出为工作区格式」卡片')
+    // 没填档案 / 没校准就不生成空壳文件：只有记录与食物库
+    expect(card.findAll('li').map((item) => item.text())).toEqual([
+      'records/2026-10-15.md',
+      'data/foods.csv'
+    ])
+    expect(HTMLAnchorElement.prototype.click).toHaveBeenCalled()
+  })
+})
+
 describe('数据页：导入', () => {
   it('选文件 → 预演差异与冲突日 → 确认导入 → 看报告', async () => {
     // 本地先有 10-15，文件里也有 10-15（冲突）与 10-14（新增）

@@ -267,6 +267,12 @@ this.version(3).stores({ adviceLog: 'id, date, createdAt' })  // 其余表沿用
 | TDEE 反推 | Theil-Sen 稳健斜率 × 每日平均摄入；样本门槛 ≥14 天（至少 7 天）有效配对（DR-27） |
 | 启动目标 | Mifflin-St Jeor → 活动系数 → 阶段调整；蛋白 2.0 g/kg、脂肪 0.8 g/kg、碳水补足余量 |
 | 兼容字段 | 无晨重时用 `weight_kg` 兜底并标记口径不明（DR-10） |
+| 显示数值舍入 | 1 位小数且**逢半取偶**（对齐 Python `'%.1f'`）；整数不带小数点，缺失写 `-` |
+
+> 舍入这一条 2026-10-16 才真正对齐：JS 的 `toFixed` 是逢半进位，`7.25` 会给 `7.3`，
+> 而 Python 给 `7.2` —— 0.25 的倍数正是**均值**最常撞上的数字（如 4 条记录的 RPE 均值 29/4）。
+> 导出的 AUTO 区块要求与脚本逐字一致，差一位小数就会让对拍随机失败。
+> 实现见 `domain/format.ts` 的 `fmtNumber`（展开成 20 位小数再按十进制取偶，别直接乘 10 取整）。
 
 ### 5.3 与脚本对拍（核心质量手段）
 
@@ -848,6 +854,24 @@ interface LlmTask<In, Out> {
 
 验收方式：导出后用仓库脚本跑 `python scripts/nutrition.py check --all` 应无错误（FR-1206 / 需求 §13.14）。
 
+**实现补充（2026-10-16，已实现）**：落点 `io/markdown/export.ts`（渲染）+ `io/workspaceExport.ts`
+（读库 / 打包）+ `pages/DataPage.vue` 的「导出为工作区格式」卡片。下面几处是把格式落成口径时定的。
+
+| 点 | 口径 | 为什么 |
+| --- | --- | --- |
+| 交互形态 | 打包成**一个** `.md` 文本包，每个文件前一行 `<!-- thin-muscle-workspace: <相对路径> -->` | 与 §7.1 同一条理由：不用 zip，iOS 上分享与查看都省事；`splitWorkspaceBundle` 是它的逆运算 |
+| 单元格数值 | 最多 3 位小数（不是工作区文件那种 1 位小数显示） | 导出是搬数据，不该顺手砍精度；脚本与解析器都只取单元格里的第一个数字 |
+| AUTO:SUMMARY | 由本地渲染（`summaryBlockLines`），规则逐字对齐脚本的 `summary_lines` | DR-45：数字永远本地算；用户跑 `totals --write` 时脚本会覆盖成同样的一段 |
+| 区块位置 | 固定在 `## 待办` 之后 | 正文按 `##` 切段，区块因此落在「待办」段里；若跟着备注段，整段（含表格）会被 `parseRecord` 当备注读回来 |
+| 行序 | 按内容排（摄入「餐次 → 菜品 → 食材」、训练「时间 → 动作」），不按主键 | `id` 只有毫秒时间戳加随机后缀，同毫秒落库的两条顺序随机 —— 同一份数据会导出成不同的文件 |
+| 日期范围 | `days` / `intake` / `workout` 三张表的并集 | 只记了一餐（还没建 `days` 行）或只建了空的一天，都不该在导出里凭空消失 |
+| `foods.csv` 的 note | 保留 `edibleNote` / `sourceNote`；`source=llm` 追加「来源：模型（置信度 x）」；非 100g/100ml 基准补 `1<unit>=<g>g` | FR-405 的来源留痕导出后不能丢；`gen-seed.mjs` 还会拒收没有 note 的非 100g 条目 |
+| 档案 / 目标的正文 | 只写应用真的持有的字段（档案不再有忌口 / 过敏 / 器材） | 不生成「填了但没人读」的空段落；front-matter 的键名照旧，脚本照旧能读 |
+
+验收：`tests/workspace-export.spec.ts`（导出 → `parseRecord` 往返一致、文本包往返一致）
+与 `tests/workspace-script.spec.ts`（把导出结果摊进临时工作区，**真跑** `check --all`，
+并逐日比对我们与脚本各自写的 AUTO 区块；没装 Python 的环境整组跳过）。
+
 ### 7.3 Markdown 解析器（导入用）
 
 - 解析 front-matter（含 `weight_kg` / `water_ml` 兼容字段，保留但不展示）。
@@ -1125,10 +1149,10 @@ src/
     logParse.ts        log.parse 应用层（草稿 + 澄清清单 + 失败保原文）
   io/
     markdown/record.ts 记录文件解析（front-matter、章节、表格、组次文本）
-    markdown/export.ts 导出回 Markdown（含 AUTO 区块，阶段 4）
+    markdown/export.ts 导出回 Markdown / CSV（记录 + 档案 + 目标 + 食物库，含 AUTO 区块）
     exportPackage.ts   导出包构建与校验
     importPackage.ts   导入与冲突策略
-    workspaceExport.ts 工作区文本导出
+    workspaceExport.ts 工作区文本导出（读库 + 打包成单个文本包）
   ui/
     pages/             今日 / 记录 hub（饮食·训练·身体）/ 当日汇总（其余先占位）
     components/        DateNav 等共享组件
@@ -1204,7 +1228,7 @@ scripts/
 | 任务 | 内容 | 验收 |
 | --- | --- | --- |
 | T4.1 | 导出包 / 导入（含三种冲突策略与预览） | ✅ 2026-10-16 完成：`io/exportPackage.ts` + `io/importPackage.ts` + `pages/DataPage.vue`（`/data`）；校验（应用 / 格式版本 / 数据库版本 / sha256 规范化校验和）→ 预演差异 → 三种冲突策略 → 导入报告，往返一致由 `import-package.spec.ts` 覆盖。口径见 §7.1 / §7.4 的「实现补充」。**「导出后 Python `check --all` 通过」属 T4.2**（工作区文本导出），本任务只做结构化 JSON |
-| T4.2 | 工作区文本导出（records / foods.csv / profile / targets） | 可直接被原脚本消费 |
+| T4.2 | 工作区文本导出（records / foods.csv / profile / targets） | ✅ 2026-10-16 完成：`io/markdown/export.ts`（记录 / CSV / 档案 / 目标渲染，含本地算的 AUTO 区块）+ `io/workspaceExport.ts`（读库、按内容排序、打包成单个文本包）+ `/data` 的「导出为工作区格式」卡片；`tests/workspace-script.spec.ts` 把导出结果摊进临时工作区**真跑** `check --all`（0 个问题）并逐日比对我们与脚本写的 AUTO 区块。口径见 §7.2 的「实现补充」 |
 | T4.3 | 快照与单日回滚 | 回滚后数据与快照一致 |
 | T4.4 | 食物库治理（来源筛选、疑似重复、停用） | 被引用的条目不可删除 |
 | T4.5 | 提醒方案落地（应用内提醒 + 能力探测的本地通知） | 打开应用能看到当天未完成项；系统支持时按设定时间通知；设置页写明限制 |
