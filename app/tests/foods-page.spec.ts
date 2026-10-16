@@ -179,4 +179,75 @@ describe('食物库页', () => {
       expect(wrapper.text()).not.toContain(CHICKEN)
     })
   })
+
+  it('改数值：按标签改完保存，行里是新数值，来源变成「手工」（FR-406）', async () => {
+    await seedLibrary()
+    const wrapper = await mountPage()
+
+    await buttonOf(rowOf(wrapper, EGG), '改数值').trigger('click')
+    await vi.waitFor(() => {
+      expect(wrapper.find('.food-editor').exists()).toBe(true)
+    })
+
+    // 六项按 NUTRIENT_KEYS 的顺序排：热量 / 蛋白 / 脂肪 / 碳水 / 纤维 / 钠，第七个是来源说明
+    const inputs = wrapper.findAll('.food-editor input')
+    expect((inputs[0].element as HTMLInputElement).value).toBe('144')
+    await inputs[0].setValue('155')
+    await inputs[1].setValue('12.6')
+    await inputs[6].setValue('包装标签')
+    expect(wrapper.find('.food-editor').text()).toContain('不会跟着变（DR-02）')
+
+    await buttonOf(wrapper.find('.food-editor'), '保存数值').trigger('click')
+    await vi.waitFor(async () => {
+      expect(await db.foods.get(EGG)).toMatchObject({ kcal: 155, source: 'manual' })
+    })
+    await vi.waitFor(() => {
+      const row = rowOf(wrapper, EGG)
+      expect(row.text()).toContain('155 kcal')
+      expect(row.text()).toContain('手工')
+      expect(row.text()).toContain('包装标签 · 覆盖自内置')
+    })
+    expect(wrapper.find('.food-editor').exists()).toBe(false)
+  })
+
+  it('漏填一项就保存不了，并指出缺哪项（FR-406）', async () => {
+    await seedLibrary()
+    const wrapper = await mountPage()
+
+    await buttonOf(rowOf(wrapper, EGG), '改数值').trigger('click')
+    await vi.waitFor(() => {
+      expect(wrapper.find('.food-editor').exists()).toBe(true)
+    })
+
+    const inputs = wrapper.findAll('.food-editor input')
+    await inputs[5].setValue('')
+    await vi.waitFor(() => {
+      expect(wrapper.find('.food-editor').text()).toContain('钠没填')
+    })
+    const save = buttonOf(wrapper.find('.food-editor'), '保存数值')
+    expect((save.element as HTMLButtonElement).disabled).toBe(true)
+
+    await buttonOf(wrapper.find('.food-editor'), '取消').trigger('click')
+    await vi.waitFor(() => {
+      expect(wrapper.find('.food-editor').exists()).toBe(false)
+    })
+    expect(await db.foods.get(EGG)).toMatchObject({ kcal: 144, source: 'seed' })
+  })
+
+  it('超出合理范围只提醒不拦：写着「请确认」，保存照样能点（DR-06）', async () => {
+    await seedLibrary()
+    const wrapper = await mountPage()
+
+    await buttonOf(rowOf(wrapper, EGG), '改数值').trigger('click')
+    await vi.waitFor(() => {
+      expect(wrapper.find('.food-editor').exists()).toBe(true)
+    })
+
+    await wrapper.findAll('.food-editor input')[0].setValue('1200')
+    await vi.waitFor(() => {
+      expect(wrapper.find('.food-editor').text()).toContain('超出每 100g/ml 的合理范围')
+    })
+    const save = buttonOf(wrapper.find('.food-editor'), '保存数值')
+    expect((save.element as HTMLButtonElement).disabled).toBe(false)
+  })
 })

@@ -217,8 +217,20 @@ interface DayRecord {
 | 引用计数怎么算 | 治理页一次 `intake` 全表扫描汇总（`tallyIntakeByFood`）；删除判据走 `foodId` 索引单查 | 上百条食物逐条 `count()` 会变成上百次查询；判据必须准 |
 | 来源标签 | `seed` / `llm` / `manual` → 内置 / 模型 / 手工（`SOURCE_LABELS`），界面与导出用同一套字 | FR-411 要求三档可辨，字面统一免得两边各写一个 |
 
-> 仍未做：**FR-406 的「用户编辑 / 覆盖条目数值」**（含把手工值写回 `source` / `sourceNote` 的
-> 来源替换，DR-06）。治理页现在只能停用与删除，改数值还得重新走一次录入 / 模型解析。
+**实现补充（2026-10-16，FR-406 已实现）**：用户在 `/foods` 上就能覆盖模型给的数值。
+落点 `domain/foodEdit.ts`（草稿解析与校验）+ `application/foodAdmin.ts` 的 `editFoodFacts`
+（来源替换）+ `data/repositories/foods.ts` 的 `saveFood` + `/foods` 每行的「改数值」内联编辑器。
+
+| 点 | 口径 | 为什么 |
+| --- | --- | --- |
+| 谁优先 | 用户填的就是最终值。模型估算是**估算**，包装标签 / 厨房秤实测优先（DR-06） | 区间是给模型兜底的，不是用来否决一个拿着标签的人 |
+| 越界怎么办 | **只提醒，不拦**：`reviewFactsEdit` 把越界项与宏量不自洽写进 `warnings`，界面显示、保存照旧 | FR-407 要的是「标出来让用户确认」，不是「禁止录入」；拦下去只会逼用户去别处凑数 |
+| 缺项怎么办 | **六项都要填**，空着不算 0（「不知道」与 0 kcal 是两件事，DR-04），保存按钮直接禁用并指出缺哪项 | 0 顶替未知会让当日汇总悄悄少算一整条 |
+| 来源怎么标 | 一律改成「手工」，`sourceNote` 写成「用户实测 / 包装标签 · 覆盖自模型：模型解析」；已是手工条目就只更新备注，不再套第二层「覆盖自」 | DR-06 要求两种数值可区分；嵌套来源会越改越长，反而读不出是谁给的 |
+| 置信度 | 置空（`undefined`） | 置信度是模型对自己估算的说法（FR-405），数值换成实测之后它就不成立了 |
+| 改哪几个字段 | 只动六项 + `source` / `sourceNote` / `updatedAt`：名称、分类、基准、停用标记、创建时间都不动 | 用户改的是「这条食物每 100g 是多少」，不是「这是哪条食物」 |
+| 历史记录 | **不动**。摄入条目存的是当时的 `foodSnapshot` 快照（DR-02），改基准值不倒着改写已记的一餐；编辑器里也把这句话写给用户看 | 改了库就悄悄改掉三周前的汇总，是用户绝对预料不到的 |
+| 没有改动 / 条目没了 | 都拒绝并说明原因（「六项数值和现在完全一样」「这条食物已经不在了」） | 空写入会刷新 `updatedAt`，让「最后动过」失去意义 |
 
 ### 4.3 版本与迁移
 
@@ -441,6 +453,10 @@ interface LlmTask<In, Out> {
 | 酒精豁免 | 名称命中 啤酒 / 白酒 / 红酒 / 葡萄酒 / 米酒 / 清酒 等时跳过宏量自洽检查：乙醇 7 kcal/g 不进宏量，反算必然偏低 |
 | 名称去重 | 先按 `nameNorm`（保留括号）精确命中，再按包含关系给出近似候选；命中则提示合并而非新增（FR-408） |
 | 置信度 | `low` 时必须用户确认后才参与汇总（FR-405） |
+
+> 六项范围的**定义只有一份**：`domain/nutrientRange.ts` 的 `NUTRIENT_RANGES` / `rangeChecks`。
+> 模型返回的数值（本表）与用户手改的数值（FR-406，见 §4.2 的「实现补充」）走同一份区间，
+> 免得出现「模型填 6000 mg 钠要确认、用户手填 6000 却放行」这种两套标准。
 
 ### 6.4 契约二：`report.weekly` / `report.monthly`
 
@@ -1207,6 +1223,8 @@ src/
     theme.ts           外观（FR-1606）：三选一 → 写 <html data-theme> + van-theme-dark，跟随系统时监听变化
   domain/              纯计算（§5.1），无 IO
     foodAudit.ts       食物库治理的本地判定（疑似重复分组、数值一致）
+    foodEdit.ts        手改数值（FR-406）：草稿解析 / 校验（越界只提醒）/ 只换六项
+    nutrientRange.ts   六项数值的合理区间（模型校验与手改共用同一份）
     reminders.ts       提醒判定（未完成项 / 到点判定 / 默认项补齐 / 补记入口，纯函数）
   data/
     db.ts              Dexie schema 与版本迁移
@@ -1312,9 +1330,10 @@ scripts/
 | T4.1 | 导出包 / 导入（含三种冲突策略与预览） | ✅ 2026-10-16 完成：`io/exportPackage.ts` + `io/importPackage.ts` + `pages/DataPage.vue`（`/data`）；校验（应用 / 格式版本 / 数据库版本 / sha256 规范化校验和）→ 预演差异 → 三种冲突策略 → 导入报告，往返一致由 `import-package.spec.ts` 覆盖。口径见 §7.1 / §7.4 的「实现补充」。**「导出后 Python `check --all` 通过」属 T4.2**（工作区文本导出），本任务只做结构化 JSON |
 | T4.2 | 工作区文本导出（records / foods.csv / profile / targets） | ✅ 2026-10-16 完成：`io/markdown/export.ts`（记录 / CSV / 档案 / 目标渲染，含本地算的 AUTO 区块）+ `io/workspaceExport.ts`（读库、按内容排序、打包成单个文本包）+ `/data` 的「导出为工作区格式」卡片；`tests/workspace-script.spec.ts` 把导出结果摊进临时工作区**真跑** `check --all`（0 个问题）并逐日比对我们与脚本写的 AUTO 区块。口径见 §7.2 的「实现补充」 |
 | T4.3 | 快照与单日回滚 | ✅ 2026-10-16 完成：`data/repositories/snapshots.ts`（存取 + 保留上限）+ `io/snapshot.ts`（载荷与手写校验）+ `application/snapshot.ts`（自动快照 / 整天替换回滚）+ `/data` 的「快照与回滚」卡片；自动快照挂在「删单条记录」与「导入覆盖 / 合并之前」。口径见 §4.3 的「实现补充」 |
-| T4.4 | 食物库治理（来源筛选、疑似重复、停用） | ✅ 2026-10-16 完成：`domain/foodAudit.ts`（疑似重复分组 / 数值一致判定）+ `application/foodAdmin.ts`（概况、停用、删除保护）+ `pages/FoodsPage.vue`（`/foods`）。验收「被引用的条目不可删除」由 `foods-page.spec.ts`（按钮禁用）与 `food-admin.spec.ts`（业务规则拒绝并说明几条记录）两处钉住。口径见 §4.2 的「实现补充」；**FR-406 编辑数值仍未做** |
+| T4.4 | 食物库治理（来源筛选、疑似重复、停用） | ✅ 2026-10-16 完成：`domain/foodAudit.ts`（疑似重复分组 / 数值一致判定）+ `application/foodAdmin.ts`（概况、停用、删除保护）+ `pages/FoodsPage.vue`（`/foods`）。验收「被引用的条目不可删除」由 `foods-page.spec.ts`（按钮禁用）与 `food-admin.spec.ts`（业务规则拒绝并说明几条记录）两处钉住。口径见 §4.2 的「实现补充」；手改数值（FR-406）随后补齐，见下表 |
 | T4.5 | 提醒方案落地（应用内提醒 + 能力探测的本地通知） | ✅ 2026-10-16 完成：`domain/reminders.ts`（纯判定）+ `application/reminders.ts`（查库凑事实）+ `application/notify.ts`（权限探测 / 一天只弹一次 / 前台每分钟检查）+ `/settings` 真页面（开关 / 时间 / 权限 / 限制说明）。今日页顶部「今天还没记的」卡片与它共用同一份判定。口径见 §9.4 的「实现补充」 |
 | T4.6 | 设置、免责声明、诊断信息导出 | ✅ 2026-10-16 完成：`app/theme.ts`（外观三选一 → 写 `<html data-theme>` + `van-theme-dark`）、`/settings` 的偏好卡片（单位只读说明 / 周起始日 / 外观）与「不再追问」逐条恢复、`pages/AboutPage.vue`（`/about`：需求 §9 七条原文 + 数据在哪 + 版本）、`io/diagnostics.ts` 诊断信息导出（不含 token 与记录内容）、`/data` 的离线队列界面与诊断导出。口径见 §9.4 / §10.2 的「实现补充」 |
+| FR-406 | 食物条目数值编辑 / 覆盖（DR-06 来源替换） | ✅ 2026-10-16 完成：`domain/foodEdit.ts`（草稿解析 / 校验 / 越界只提醒）+ `application/foodAdmin.ts` 的 `editFoodFacts`（来源替换成「手工」并留痕）+ `/foods` 每行的「改数值」内联编辑器。区间与模型校验共用 `domain/nutrientRange.ts`。口径见 §4.2 的「实现补充」 |
 
 ---
 

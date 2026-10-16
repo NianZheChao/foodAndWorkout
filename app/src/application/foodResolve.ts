@@ -8,6 +8,7 @@
 
 import { baseNameOf, isAlcoholic, normalizeFoodName } from '@/domain/foodName'
 import { isMacroConsistent } from '@/domain/nutrition'
+import { rangeChecks } from '@/domain/nutrientRange'
 import { findByNormalizedName, listFoods, upsertFood } from '@/data/repositories/foods'
 import { enqueue, markOp } from '@/data/repositories/pendingOps'
 import { runTask, type RunFailure, type RunOptions } from '@/llm'
@@ -17,16 +18,6 @@ import type { Confidence, Food, NutritionFacts } from '@/domain/types'
 
 /** 一次请求最多合并多少条未知食物（超出分批，§6.3）。 */
 export const FOOD_BATCH_LIMIT = 10
-
-/** 每 100g/ml 的合理范围（§6.3）。越界只标记可疑，不直接丢弃。 */
-export const NUTRIENT_RANGES: Record<keyof NutritionFacts, readonly [number, number]> = {
-  kcal: [0, 900],
-  proteinG: [0, 100],
-  fatG: [0, 100],
-  carbG: [0, 100],
-  fiberG: [0, 100],
-  sodiumMg: [0, 5000]
-}
 
 export interface FoodResolveCandidate {
   query: string
@@ -57,26 +48,6 @@ export interface ResolveBehavior {
    * 队列重放时必须传 `false`：否则每次重放失败都会再排一条，队列越滚越长（§6.10）。
    */
   enqueueOnFailure?: boolean
-}
-
-function rangeChecks(facts: NutritionFacts): string[] {
-  const messages: string[] = []
-  const labels: Record<keyof NutritionFacts, string> = {
-    kcal: '热量',
-    proteinG: '蛋白',
-    fatG: '脂肪',
-    carbG: '碳水',
-    fiberG: '纤维',
-    sodiumMg: '钠'
-  }
-  for (const key of Object.keys(NUTRIENT_RANGES) as (keyof NutritionFacts)[]) {
-    const [min, max] = NUTRIENT_RANGES[key]
-    const value = facts[key]
-    if (!Number.isFinite(value) || value < min || value > max) {
-      messages.push(`${labels[key]} ${value} 超出每 100g/ml 的合理范围（${min}–${max}），请确认`)
-    }
-  }
-  return messages
 }
 
 function toFacts(item: ResolvedFoodItem): NutritionFacts {

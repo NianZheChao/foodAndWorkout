@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 食物库（T4.4 / M4 FR-402 / FR-408 / FR-411 / FR-412）。
+ * 食物库（T4.4 / M4 FR-402 / FR-406 / FR-408 / FR-411 / FR-412）。
  *
  * 三件事：
  * 1. **检索与来源筛选**（FR-402 / FR-411）：按名称搜、按来源（内置 / 模型 / 手工）与分类筛，
@@ -8,7 +8,9 @@
  * 2. **疑似重复提醒**（FR-408）：去括号后同名的一组列在一起，数值是否一致也说清楚，
  *    但**绝不自动合并** —— 括号里的生熟 / 全脂脱脂往往正是区别；
  * 3. **停用与删除**（FR-412）：被记录引用过的条目不能删除，只能停用；删除前二次确认，
- *    且真正的判据在 `application/foodAdmin.ts` 里（界面把按钮禁掉只是顺手）。
+ *    且真正的判据在 `application/foodAdmin.ts` 里（界面把按钮禁掉只是顺手）；
+ * 4. **改数值**（FR-406）：模型给的是估算，用户手里的包装标签 / 实测值优先。填的时候缺项当场拦住，
+ *    越界只提醒不拦（DR-06）；保存后来源改成「手工」并留痕。
  *
  * 停用的语义要讲明白：**不删除任何历史数值**。摄入条目存的是食物快照（DR-02），
  * 停用只是让它不再出现在检索与新增候选里。
@@ -18,9 +20,11 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { showDialog, showToast } from 'vant'
 import AppHeader from '@/components/AppHeader.vue'
 import ChipSelect from '@/components/ChipSelect.vue'
-import { buildFoodOverview, deleteFood, setDisabled, SOURCE_LABELS, type FoodOverview } from '@/application/foodAdmin'
+import { buildFoodOverview, deleteFood, editFoodFacts, setDisabled, SOURCE_LABELS, type FoodOverview } from '@/application/foodAdmin'
 import { baseNameOf, normalizeFoodName } from '@/domain/foodName'
+import { draftOfFood, emptyFactsDraft, reviewFactsEdit, type FoodFactsDraft } from '@/domain/foodEdit'
 import { fmtNumber } from '@/domain/format'
+import { NUTRIENT_KEYS, NUTRIENT_LABELS, NUTRIENT_UNITS, type NutrientKey } from '@/domain/nutrition'
 import type { Food } from '@/domain/types'
 
 /** 每屏先渲染这么多条，剩下的按需展开（库会随着模型补全长大）。 */
@@ -132,7 +136,51 @@ async function remove(food: Food): Promise<void> {
     busyId.value = ''
   }
 }
-</script>
+
+/** 正在改数值的条目 id（空串 = 没打开编辑器）。 */
+const editingId = ref('')
+const draft = ref<FoodFactsDraft>(emptyFactsDraft())
+const editNote = ref('')
+const editError = ref('')
+
+const editingFood = computed(() => (overview.value?.foods ?? []).find((food) => food.id === editingId.value))
+
+/** 边填边算：缺项 / 非数字 / 负数当场拦住保存，越界与宏量不自洽只给提醒（DR-06）。 */
+const editReview = computed(() => (editingFood.value ? reviewFactsEdit(editingFood.value, draft.value) : undefined))
+
+function startEdit(food: Food): void {
+  editingId.value = food.id
+  draft.value = draftOfFood(food)
+  editNote.value = ''
+  editError.value = ''
+}
+
+function cancelEdit(): void {
+  editingId.value = ''
+  editError.value = ''
+}
+
+/** van-field 的 `type="number"` 也会给字符串，统一转一下再进草稿。 */
+function setDraft(key: NutrientKey, value: string | number): void {
+  draft.value[key] = String(value)
+}
+
+async function saveEdit(food: Food): Promise<void> {
+  busyId.value = food.id
+  editError.value = ''
+  try {
+    const outcome = await editFoodFacts(food.id, draft.value, editNote.value)
+    if (!outcome.ok) {
+      editError.value = outcome.reason
+      return
+    }
+    editingId.value = ''
+    await load()
+    showToast({ message: `已覆盖「${food.name}」的数值，来源改为手工`, position: 'bottom' })
+  } finally {
+    busyId.value = ''
+  }
+}</script>
 
 <template>
   <section class="page" :data-ready="loaded ? 'true' : 'false'">
@@ -233,6 +281,7 @@ async function remove(food: Food): Promise<void> {
           <span v-else>还没有记录用过</span>
         </div>
         <div class="food-actions">
+          <van-button size="small" plain @click="startEdit(food)">改数值</van-button>
           <van-button
             size="small"
             plain
@@ -255,6 +304,40 @@ async function remove(food: Food): Promise<void> {
         <p v-if="referencesOf(food)" class="muted">
           被引用过，删不掉（FR-412）—— 用「停用」让它不再出现在检索里。
         </p>
+
+        <div v-if="editingId === food.id" class="food-editor">
+          <p class="muted">
+            按包装标签 / 厨房秤把六项都填上（每 {{ food.unit }}）。改的是<strong>食物库里的基准值</strong>：
+            已经记过的那几餐存的是当时的快照，不会跟着变（DR-02）。
+          </p>
+          <van-field
+            v-for="key in NUTRIENT_KEYS"
+            :key="key"
+            :model-value="draft[key]"
+            :label="`${NUTRIENT_LABELS[key]}（${NUTRIENT_UNITS[key]}）`"
+            type="number"
+            @update:model-value="(value) => setDraft(key, value)"
+          />
+          <van-field v-model="editNote" label="来源说明" placeholder="如：包装标签 / 厨房秤实测" />
+          <p v-if="editReview && !editReview.ok" class="muted warn-text">{{ editReview.error }}</p>
+          <ul v-if="editReview?.warnings.length" class="hint-list">
+            <li v-for="warning in editReview.warnings" :key="warning">{{ warning }}</li>
+          </ul>
+          <p class="muted">保存后这条的来源会改成「手工」，原来的来源写进来源说明里留痕（FR-406 / DR-06）。</p>
+          <div class="actions">
+            <van-button
+              size="small"
+              type="primary"
+              :disabled="!editReview?.ok"
+              :loading="busyId === food.id"
+              @click="saveEdit(food)"
+            >
+              保存数值
+            </van-button>
+            <van-button size="small" plain @click="cancelEdit">取消</van-button>
+          </div>
+          <p v-if="editError" class="muted warn-text">{{ editError }}</p>
+        </div>
       </div>
       <div v-if="filtered.length > visible.length" class="actions">
         <van-button plain block @click="visibleCount += PAGE_SIZE">
@@ -334,5 +417,17 @@ async function remove(food: Food): Promise<void> {
   display: flex;
   gap: 8px;
   margin-top: 8px;
+}
+
+.food-editor {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.food-editor .hint-list {
+  margin: 6px 0;
 }
 </style>

@@ -62,6 +62,18 @@ export async function removeFood(id: string): Promise<void> {
   await db.foods.delete(id)
 }
 
+export async function getFood(id: string): Promise<Food | undefined> {
+  return db.foods.get(id)
+}
+
+/**
+ * 覆盖一条食物（FR-406 的手改数值走这里）。校验与来源替换在 `application/foodAdmin.ts` 里做完，
+ * 到这里就是一条已经拍平的完整记录：同 id 覆盖，`updatedAt` 由仓储统一刷新。
+ */
+export async function saveFood(food: Food): Promise<void> {
+  await db.foods.put(toPlain({ ...food, updatedAt: Date.now() }))
+}
+
 export interface UpsertFoodInput extends SeedFood {
   source: FoodSource
   sourceNote?: string
