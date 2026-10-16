@@ -41,3 +41,24 @@ export async function countPendingIntake(date: string): Promise<number> {
 export async function listPendingIntake(): Promise<IntakeEntry[]> {
   return db.intake.where('pendingFlag').equals(1).toArray()
 }
+
+/**
+ * 每条食物被多少条摄入记录引用过（FR-412 的删除保护），键是 `foodId`。
+ *
+ * 一次读全表再在内存里汇总：食物库治理页要一次拿到所有条目的引用数，
+ * 按条目逐个 `count()` 会变成上百次查询。
+ */
+export async function tallyIntakeByFood(): Promise<Map<string, number>> {
+  const rows = await db.intake.toArray()
+  const tally = new Map<string, number>()
+  for (const row of rows) {
+    if (!row.foodId) continue
+    tally.set(row.foodId, (tally.get(row.foodId) ?? 0) + 1)
+  }
+  return tally
+}
+
+/** 单条食物的引用数（删除前的最终判据，走索引）。 */
+export async function countIntakeByFood(foodId: string): Promise<number> {
+  return db.intake.where('foodId').equals(foodId).count()
+}

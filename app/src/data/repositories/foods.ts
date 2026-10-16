@@ -44,6 +44,24 @@ export async function findByNormalizedName(name: string): Promise<Food | undefin
   return hits.find((f) => f.disabledFlag !== 1) ?? hits[0]
 }
 
+/**
+ * 停用 / 恢复（FR-412）。
+ *
+ * 停用只让条目**不再出现在检索与新增候选里**（`listFoods` / `searchFoods` 会过滤掉它），
+ * 历史记录不受影响 —— 摄入条目存的是 `foodSnapshot` 快照，本来就不会随食物库变形（DR-02）。
+ */
+export async function setFoodDisabled(id: string, disabled: boolean): Promise<void> {
+  await db.foods.update(id, toPlain({ disabledFlag: disabled ? 1 : 0, updatedAt: Date.now() }))
+}
+
+/**
+ * 物理删除。**调用方必须先确认没有记录引用过它**（FR-412）：
+ * 那条业务规则在 `application/foodAdmin.ts` 里守着，仓储只负责删。
+ */
+export async function removeFood(id: string): Promise<void> {
+  await db.foods.delete(id)
+}
+
 export interface UpsertFoodInput extends SeedFood {
   source: FoodSource
   sourceNote?: string

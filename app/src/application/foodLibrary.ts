@@ -1,19 +1,8 @@
 /** 食物库的查找与「给模型看的名字清单」。不涉及网络，纯本地（DR-40 / FR-1408）。 */
 
 import { listFoods, findByNormalizedName } from '@/data/repositories/foods'
-import { normalizeFoodName } from '@/domain/foodName'
+import { baseNameOf, normalizeFoodName, parenOf } from '@/domain/foodName'
 import type { Food } from '@/domain/types'
-
-/** 去掉括号里的限定语：`鸡蛋(全蛋 生)` → `鸡蛋`。用于「一句话里提到了它」这种粗匹配。 */
-export function baseNameOf(name: string): string {
-  return name.replace(/[（(].*$/, '').trim()
-}
-
-/** 括号里的限定语；没有括号返回空串。 */
-export function parenOf(name: string): string {
-  const matched = /[（(]([^)）]*)[)）]/.exec(name)
-  return matched ? matched[1].trim() : ''
-}
 
 /** 括号里是否含生熟 / 干湿 / 做法这类「等于结论」的限定语。 */
 const STATE_QUALIFIER_RE = /生|熟|干|市售|水煮|烤|炸|炒|煮|蒸|卤/

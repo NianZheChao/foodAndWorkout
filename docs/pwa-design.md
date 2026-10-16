@@ -202,6 +202,24 @@ interface DayRecord {
 }
 ```
 
+**实现补充（2026-10-16，T4.4 已实现）**：食物库治理落点 `domain/foodAudit.ts`（本地判定）+
+`application/foodAdmin.ts`（用例：概况 / 停用 / 删除保护）+ `pages/FoodsPage.vue`（`/foods`）。
+下面几条是把 FR-408 / FR-411 / FR-412 落成代码时定的。
+
+| 点 | 口径 | 为什么 |
+| --- | --- | --- |
+| 「疑似重复」怎么判定 | 按**去掉括号后的主名**归一化分组（`looseFoodKey`），≥2 条成一组；组里再标出六项数值是否完全一致 | 括号里的限定语很可能正是区别（`牛奶(全脂 市售)` vs `牛奶(脱脂 市售)`），分组用宽松键、判断用严格比较 |
+| 会不会自动合并 | **不会**。只提醒 + 让用户停用其中一条 | 自动挑一条留下就是静默改数值；近似重复合并属需求 §12 的 P2 |
+| 名称工具的位置 | `baseNameOf` / `parenOf` 从 `application/foodLibrary.ts` 挪进 `domain/foodName.ts` | 纯字符串运算：治理页要用，但它们不属于「查库」 |
+| 停用（`disabledFlag`）的语义 | 只让条目**不再出现在检索与新增候选里**（`listFoods` / `searchFoods` 过滤），数值与历史一字不动 | 摄入条目存的是 `foodSnapshot` 快照（DR-02），删/停都不该让历史记录变形 |
+| 删除保护在哪一层 | 业务规则在 `application/foodAdmin.ts`（`deleteFood` 再查一次引用数），界面把按钮禁掉只是顺手 | 界面禁用绕得过去；「被引用的条目不可删除」是要能被单测钉住的规则 |
+| 删除前为什么再查一次引用 | 从渲染列表到用户点确认之间可能又记了一条，用旧计数放行就会删掉正在被引用的条目 | 用户界面的读与写之间永远有时间差 |
+| 引用计数怎么算 | 治理页一次 `intake` 全表扫描汇总（`tallyIntakeByFood`）；删除判据走 `foodId` 索引单查 | 上百条食物逐条 `count()` 会变成上百次查询；判据必须准 |
+| 来源标签 | `seed` / `llm` / `manual` → 内置 / 模型 / 手工（`SOURCE_LABELS`），界面与导出用同一套字 | FR-411 要求三档可辨，字面统一免得两边各写一个 |
+
+> 仍未做：**FR-406 的「用户编辑 / 覆盖条目数值」**（含把手工值写回 `source` / `sourceNote` 的
+> 来源替换，DR-06）。治理页现在只能停用与删除，改数值还得重新走一次录入 / 模型解析。
+
 ### 4.3 版本与迁移
 
 当前版本 **v3**：v1 是初始表结构；v2 新增 `drafts`（草稿）；v3 新增 `adviceLog`（每日指导，§6.4.2）。
@@ -940,7 +958,7 @@ interface LlmTask<In, Out> {
 | `/trend` | 趋势 | `?days=7\|14\|28` |
 | `/coach` | 今日指导（A 级） | 摘要 v2 + 当日缺口 → 带依据的建议；含「将要发送的内容」预览与采纳/不采纳（§6.4.2 / FR-1602） |
 | `/reports` / `/reports/:id` | 报告列表 / 详情 | 待生成报告置顶 |
-| `/foods` | 食物库 | 来源筛选、疑似重复提示 |
+| `/foods` | 食物库 | 条目概况、按名称 / 来源（内置 / 模型 / 手工）/ 分类筛选、疑似重复分组提醒（T4.4）；停用与删除（被记录引用过的删不掉，只能停用） |
 | `/targets` | 目标 | 校准记录表 |
 | `/calibration` | 校准向导 | 本地数字 + AI 复核；幅度 / 频率 / 样本门禁，采纳才写目标（§6.7 / T3.5） |
 | `/profile` | 档案 | |
@@ -1153,6 +1171,7 @@ Pinia 只放**会话态与派生态**：
 src/
   app/                 启动、路由、全局布局、错误边界
   domain/              纯计算（§5.1），无 IO
+    foodAudit.ts       食物库治理的本地判定（疑似重复分组、数值一致）
   data/
     db.ts              Dexie schema 与版本迁移
     repositories/      days / intake / workout / foods / reports / targets / profile / settings / snapshots
@@ -1166,6 +1185,7 @@ src/
     tasks/             food.resolve.ts / log.parse.ts（report.* / plan.* / calibration.* 属阶段 3）
   application/         用例层：本地优先、业务校验、落库编排
     foodLibrary.ts     库内查找（精确 + 有限模糊）与「给模型看的名字清单」
+    foodAdmin.ts       食物库治理（概况 / 停用 / 删除保护 FR-412）
     foodResolve.ts     food.resolve 应用层（缓存命中 / 范围与宏量校验 / 去重 / 失败入队）
     logParse.ts        log.parse 应用层（草稿 + 澄清清单 + 失败保原文）
     snapshot.ts        快照与单日回滚（自动快照 / 整天替换 / 回滚前再拍一张）
@@ -1253,7 +1273,7 @@ scripts/
 | T4.1 | 导出包 / 导入（含三种冲突策略与预览） | ✅ 2026-10-16 完成：`io/exportPackage.ts` + `io/importPackage.ts` + `pages/DataPage.vue`（`/data`）；校验（应用 / 格式版本 / 数据库版本 / sha256 规范化校验和）→ 预演差异 → 三种冲突策略 → 导入报告，往返一致由 `import-package.spec.ts` 覆盖。口径见 §7.1 / §7.4 的「实现补充」。**「导出后 Python `check --all` 通过」属 T4.2**（工作区文本导出），本任务只做结构化 JSON |
 | T4.2 | 工作区文本导出（records / foods.csv / profile / targets） | ✅ 2026-10-16 完成：`io/markdown/export.ts`（记录 / CSV / 档案 / 目标渲染，含本地算的 AUTO 区块）+ `io/workspaceExport.ts`（读库、按内容排序、打包成单个文本包）+ `/data` 的「导出为工作区格式」卡片；`tests/workspace-script.spec.ts` 把导出结果摊进临时工作区**真跑** `check --all`（0 个问题）并逐日比对我们与脚本写的 AUTO 区块。口径见 §7.2 的「实现补充」 |
 | T4.3 | 快照与单日回滚 | ✅ 2026-10-16 完成：`data/repositories/snapshots.ts`（存取 + 保留上限）+ `io/snapshot.ts`（载荷与手写校验）+ `application/snapshot.ts`（自动快照 / 整天替换回滚）+ `/data` 的「快照与回滚」卡片；自动快照挂在「删单条记录」与「导入覆盖 / 合并之前」。口径见 §4.3 的「实现补充」 |
-| T4.4 | 食物库治理（来源筛选、疑似重复、停用） | 被引用的条目不可删除 |
+| T4.4 | 食物库治理（来源筛选、疑似重复、停用） | ✅ 2026-10-16 完成：`domain/foodAudit.ts`（疑似重复分组 / 数值一致判定）+ `application/foodAdmin.ts`（概况、停用、删除保护）+ `pages/FoodsPage.vue`（`/foods`）。验收「被引用的条目不可删除」由 `foods-page.spec.ts`（按钮禁用）与 `food-admin.spec.ts`（业务规则拒绝并说明几条记录）两处钉住。口径见 §4.2 的「实现补充」；**FR-406 编辑数值仍未做** |
 | T4.5 | 提醒方案落地（应用内提醒 + 能力探测的本地通知） | 打开应用能看到当天未完成项；系统支持时按设定时间通知；设置页写明限制 |
 | T4.6 | 设置、免责声明、诊断信息导出 | 需求 §9 与 FR-1608 可验 |
 

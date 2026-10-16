@@ -5,8 +5,8 @@
 
 - 最后更新：2026-10-16
 - 应用版本：`0.1.0`（`app/package.json`）
-- 分支 / 最近提交：`main` / `b5b7ccd feat: 工作区文本导出（T4.2）+ /data 页导出卡片 + fmtNumber 逢半取偶`
-- 质量基线（2026-10-16 实测）：`npm test` 45 文件 / 421 项（**`quick-log-page.spec.ts` 仍是偶发失败，7 次重跑里出现 3 次，见 §8**；`workspace-script.spec.ts` 没装 Python 时整组跳过）；`npm run build`（含 `vue-tsc -b` 类型检查）通过
+- 分支 / 最近提交：`main` / `30126ca feat: 快照与单日回滚（T4.3）+ /data 快照卡片 + 导入/删除前自动快照`
+- 质量基线（2026-10-16 实测）：`npm test` 47 文件 / 435 项（**`quick-log-page.spec.ts` 仍是偶发失败，7 次重跑里出现 3 次，见 §8**；`workspace-script.spec.ts` 没装 Python 时整组跳过）；`npm run build`（含 `vue-tsc -b` 类型检查，**测试文件也在类型检查范围内**）通过
 
 ## 0. 三十秒速览
 
@@ -16,13 +16,14 @@
 | 阶段 1 | 本地能力闭环：领域计算、三类记录页、当日汇总、趋势页 | ✅ 完成 |
 | 阶段 2 | 模型能力：配置与连通性、LLM 客户端、食物补全、自由文本 / 图片记录、澄清引擎、队列执行器 | 🟡 主体完成，2 处收尾未做（见 §3） |
 | 阶段 3 | 报告与指导：周报月报、每日指导（A 级）、校准向导、B 级推荐 | 🟡 报告（T3.1 - T3.3）、摘要 v2（T3.6）、每日指导（T3.7，见 §2.10）、校准向导（T3.5，见 §2.11）已完成；**推荐周计划取消**（T3.4），只剩 B 级推荐（T3.8，默认关）未做 |
-| 阶段 4 | 数据治理：导入导出、快照回滚、食物库治理、提醒、设置 | 🟡 导出 / 导入（T4.1，见 §2.12）、工作区文本导出（T4.2，见 §2.13）与快照回滚（T4.3，见 §2.14）已完成；食物库治理（T4.4）、提醒（T4.5）、设置（T4.6）未做 |
+| 阶段 4 | 数据治理：导入导出、快照回滚、食物库治理、提醒、设置 | 🟡 导出 / 导入（T4.1，见 §2.12）、工作区文本导出（T4.2，见 §2.13）、快照回滚（T4.3，见 §2.14）与食物库治理（T4.4，见 §2.15）已完成；提醒（T4.5）、设置（T4.6）未做 |
 
 一句话总结：**「配好档案与目标 → 用一句话或表单记一整天（含未知食物自动补全）→ 看当日汇总与趋势 →
 每天拿一份带依据的 AI 指导 → 用近 4 周的记录做一次校准 → 生成周报 / 月报」这条链路已经完整**；
 推荐周计划已决定不做（B 级生成式推荐默认关、未做）；数据能导出成 JSON 包、也能导回来，
 还能导出成原工作区那一套文本（`records/` + `foods.csv` + `profile.md` + `targets.md`，
-仓库脚本可直接消费），手滑毁数据也有快照可回滚，但食物库治理与设置页还没有。
+仓库脚本可直接消费），手滑毁数据有快照可回滚，食物库能自己治理（来源筛选 / 疑似重复 / 停用），
+但提醒与设置页还没有。
 
 ## 1. 文档地图
 
@@ -432,6 +433,37 @@
   `data-page.spec.ts` 补 1 项（拍 → 列表 → 回滚 → 报告；jsdom 里 `showDialog` 需要 mock 掉，
   否则没人点确认框、promise 永远不 resolve）。口径与八条落地约定见设计文档 §4.3 的「实现补充」。
 
+### 2.15 T4.4 落地：食物库治理（2026-10-16）
+
+阶段 4 的第四件事：让食物库能自己收拾干净（FR-402 / FR-408 / FR-411 / FR-412）。`/foods` 之前是
+占位页，现在有真页面了。
+
+- **本地判定** `domain/foodAudit.ts`：`groupSuspectedDuplicates`（按**去括号后的主名**归一化分组，
+  ≥2 条成一组）、`sameFoodFacts`（六项数值是否完全一致 → 组里再分「数值完全相同 / 数值不同」）。
+  刻意**不自动合并**：括号里的生熟 / 全脂脱脂往往正是区别，自动挑一条留下就是静默改数值。
+  名称工具 `baseNameOf` / `parenOf` 顺手从 `application/foodLibrary.ts` 挪进 `domain/foodName.ts`
+  （纯字符串运算，治理页也要用）。
+- **用例层** `application/foodAdmin.ts`：`buildFoodOverview`（条目 + 引用数 + 分组 + 统计一次算好）、
+  `setDisabled`、`deleteFood`。**「被引用的条目不可删除」落在这一层**（`deleteFood` 走 `foodId`
+  索引再查一次引用数，>0 就拒绝并说出几条记录）—— 界面把按钮禁掉只是顺手，绕不过这里；
+  再查一次是因为从渲染列表到用户点确认之间可能又记了一条。
+- **仓储**：`data/repositories/foods.ts` 加 `setFoodDisabled` / `removeFood`；
+  `data/repositories/intake.ts` 加 `tallyIntakeByFood`（治理页一次全表汇总，避免上百次 `count()`）
+  与 `countIntakeByFood`（删除判据）。
+- **页面** `/foods`：概况（共几条 / 内置·模型·手工 / 已停用 / 被引用过）、按名称搜 + 来源筛选
+  （内置 / 模型 / 手工 / **已停用**）+ 分类筛选、疑似重复卡片（每组列出成员、标出数值是否一致、
+  说明该「留一条停用其余」还是「先看清括号里的限定语」）、条目列表（六项数值 / 来源说明 / 引用数 /
+  停用↔恢复 / 删除，删除按钮在被引用时禁用并写明原因），超过 30 条按需展开。
+- **停用的语义**（写进界面文案，别让用户以为数据没了）：只让条目**不再出现在检索与新增候选里**，
+  数值与历史记录一字不动 —— 摄入条目存的是 `foodSnapshot` 快照（DR-02）。
+- 验收：`npm test` 47 文件 / 435 项、`npm run build` 通过。新用例 `food-admin.spec.ts` 9 项
+  （分组与数值一致判定、宽松键 vs 精确键、概况统计、真实种子库 114 条也能分组、停用后检索不到但历史还在、
+  停用不存在条目返回原因、被引用删除被拒且条目还在、没引用可删、停用不破坏分组）、
+  `foods-page.spec.ts` 5 项（概况与疑似重复卡片、搜索过滤、被引用条目删除按钮禁用、停用后在「已停用」
+  里能恢复、没引用过的确认后真删）。口径与八条落地约定见设计文档 §4.2 的「实现补充」。
+
+> 仍未做：**FR-406 的「用户编辑 / 覆盖条目数值」**（含 DR-06 的来源替换）。治理页现在只能停用与删除。
+> 近似重复的自动合并属需求 §12 的 P2，不在这一轮。
 ## 3. 部分完成：有明确缺口（优先补这些）
 
 | 编号 | 已实现 | 缺什么 | 建议落点 |
@@ -460,9 +492,9 @@
 
 | 任务 | 要做的事 | 依赖 / 注意 | 验收 |
 | --- | --- | --- | --- |
-| T4.4 | 食物库治理（`/foods`）：来源筛选、疑似重复、停用 | `foods` 表已有 `source` / `disabledFlag` 索引，`domain/foodName.ts` 已有归一化可做重复检测 | 被引用的条目不可删除 |
 | T4.5 | 提醒：应用内提醒 + 能力探测的本地通知 | 前提约束 TD-09：**无后端、不做 Web Push、不做 .ics / 日历导出**；设置页要写明限制 | 打开应用能看到当天未完成项；系统支持时按设定时间通知 |
 | T4.6 | `/settings`（提醒、单位、外观、不再追问名单）与 `/data` 剩下的部分（离线队列界面、诊断信息导出）、免责声明 | 需求 §9 要求在应用内展示免责声明；`modelConfig` 已有诊断信息的雏形。**`/data` 的导出 / 导入（T4.1）与快照回滚（T4.3）已经做了** | 需求 §9 与 FR-1608 可验 |
+| FR-406（欠账） | 食物条目数值的编辑 / 覆盖（含 DR-06 的来源替换） | M4 的一部分，原计划搭在「食物库」页上，T4.4 只做了来源筛选 / 疑似重复 / 停用与删除保护 | 手工值能覆盖模型值，来源标注跟着变 |
 
 > **T4.1（导出包 / 导入）已于 2026-10-16 完成**，见 §2.12。
 > **T4.2（工作区文本导出）已于 2026-10-16 完成**，见 §2.13：「导出后 Python `check --all` 通过」
@@ -470,7 +502,9 @@
 > 验收是「往返一致」，由 `tests/import-package.spec.ts` 覆盖）。
 > **T4.3（快照与单日回滚）已于 2026-10-16 完成**，见 §2.14：`snapshots` 表不再是死表，
 > 破坏性写操作之前会自动拍一张，`/data` 上能按天回滚，回滚本身也能再回滚。
-> 阶段 4 现在从 **T4.4 食物库治理**接着做。
+> **T4.4（食物库治理）已于 2026-10-16 完成**，见 §2.15：`/foods` 从占位页变成真页面，
+> 来源 / 分类筛选、疑似重复分组提醒、停用↔恢复、被引用过的条目删不掉（FR-412）。
+> 阶段 4 现在从 **T4.5 提醒**接着做（T4.6 设置页随后）。
 
 ## 5. 代码地图
 
@@ -480,10 +514,11 @@
 app/
   src/
     app/          启动流程（bootstrap：开库 + 写种子）、日期工具、设置、图片压缩
-    domain/       纯计算与领域类型 —— 无 IO、不依赖 Vue / Dexie（对拍测试直接打这里）
+    domain/       纯计算与领域类型 —— 无 IO、不依赖 Vue / Dexie（对拍测试直接打这里）；
+                  foodName / foodAudit 是食物库的名称归一化与疑似重复判定
     data/         Dexie schema（db.ts）、仓储层（repositories/）、种子数据（seed/）
     llm/          OpenAI 兼容客户端、错误分类、文本抽取、任务注册表与流水线、tasks/
-    application/  用例层：本地优先、业务校验、落库编排（foodLibrary / foodResolve / logParse / queue / report / coach / calibration / snapshot / daySummary）
+    application/  用例层：本地优先、业务校验、落库编排（foodLibrary / foodResolve / foodAdmin / logParse / queue / report / coach / calibration / snapshot / daySummary）
     io/           导出包组装（exportPackage）、导入校验 / 预演 / 落库（importPackage）；
                   工作区文本导出（workspaceExport）、日快照载荷与校验（snapshot）；
                   markdown/ 记录文件解析与导出（record / export）
@@ -510,7 +545,9 @@ app/
 | 模型返回的脏文本 | `llm/text.ts` `parseJsonFromModel` / `estimateTokens` |
 | 任务契约（新增任务时） | `llm/types.ts` `LlmTask`，再注册进 `llm/index.ts` 的 `TASKS` |
 | 食物库查找与模糊匹配 | `application/foodLibrary.ts` `findFoodFuzzy` / `suggestKnownFoods` |
+| 食物库治理（`/foods`） | `application/foodAdmin.ts` `buildFoodOverview` / `setDisabled` / `deleteFood`；分组在 `domain/foodAudit.ts`，页面是 `pages/FoodsPage.vue` |
 | 未知食物落库 | `application/foodResolve.ts` `resolveFoods` / `toFood` |
+| 食物名称归一化 / 主名 | `domain/foodName.ts` `normalizeFoodName`（保留括号）/ `baseNameOf` / `looseFoodKey` |
 | 自由文本 → 草稿 | `application/logParse.ts` `parseLog` |
 | 待办队列重放 | `application/queue.ts` `runQueue`（启动 / 联网时驱动） |
 | 报告摘要（模型输入） | `domain/reportDigest.ts` `buildReportDigest` / `periodOf` / `coverageWarning` |
@@ -542,7 +579,7 @@ app/
 ```bash
 npm install
 npm run dev       # 本地开发服务器
-npm test          # 单元 / 对拍 / 组件测试（45 文件 / 421 项）
+npm test          # 单元 / 对拍 / 组件测试（47 文件 / 435 项）
 npm run build     # vue-tsc 类型检查 + 生产构建（产物 dist/）
 npm run preview   # 预览构建产物 —— 测 PWA 行为请用这个，不要用 dev
 npm run seed      # 从 ../data/foods.csv 重新生成内置食物库种子
@@ -619,6 +656,12 @@ npm run build
   `data-page.spec.ts` 的回滚用例是现成例子。
 - **比两段 JSON 来判断「内容有没有变」几乎一定失败**：只要序列化里带 `Date.now()`（快照载荷的
   `takenAt`）就永远不相等。要比就把「内容」单独抽成指纹（`io/snapshot.ts` 的 `snapshotContentKey`）。
+- **`npm run build` 会连着类型检查 `tests/`**（`vue-tsc -b` 把测试也纳进项目）：`vitest` 跑得过的
+  用例可能在构建时因为 wrapper 类型报错 —— `findAll()` 拿到的是 `DOMWrapper<Element>`、
+  `mount()` 给的是 `VueWrapper`，写测试辅助函数时把返回类型标出来（`foods-page.spec.ts` 是例子）。
+- **组件测试里点「禁用的按钮」是会真的触发 `@click` 的**：jsdom 不做浏览器的「禁用元素不派发点击」
+  那套判断。要验证删除保护，断言 `(btn.element as HTMLButtonElement).disabled === true`，
+  不要去点它再看结果。
 - **jsdom 缺 `matchMedia`、canvas、`beforeinstallprompt`**：用到它们的组件要把「能力探测」写成守卫
   （`InstallHint.vue` 先判 `typeof window.matchMedia === 'function'`，`EchartView.vue` 直接跳过 jsdom），
   否则测试会在与业务无关的地方炸掉。
@@ -665,14 +708,17 @@ npm run build
    导入走「校验 → 预演 → 三种冲突策略 → 报告」。
 7. ~~T4.2 工作区文本导出~~ → ~~T4.3 快照回滚~~ —— 2026-10-16 已完成（T4.2 见 §2.13，T4.3 见 §2.14）：
    对「数据在本地」补齐了最后一条安全带。
-8. **T4.4 食物库治理**（来源筛选、疑似重复、停用；被引用的条目不可删除）—— 阶段 4 的下一件事。
-9. **T4.5 / T4.6** 收尾打磨。**T3.8（B 级推荐）**放最后：它默认关，且开启前必须先恢复约束字段。
+8. ~~T4.4 食物库治理~~ —— 2026-10-16 已完成（见 §2.15）：来源 / 分类筛选、疑似重复分组提醒、
+   停用↔恢复、被引用过的条目删不掉（FR-412）。
+9. **T4.5 提醒**（应用内提醒 + 能力探测的本地通知）→ **T4.6 设置页 / 免责声明 / 诊断导出**
+   —— 阶段 4 的收尾。**T3.8（B 级推荐）**放最后：它默认关，且开启前必须先恢复约束字段。
+   另外还欠一笔 **FR-406**（食物条目数值编辑），见 §4.2 表格里那一行。
 
 每一步都能独立验收；建议每完成一项就更新本文第 2 / 3 / 4 节的表格，以及 `docs/pwa-design.md` §13 的状态标记。
 
 ## 10. 交接自检清单
 
-- [ ] `cd app && npm install && npm test`（45 文件 / 421 项；`quick-log-page.spec.ts` 偶发失败时重跑一次即可，见 §8）
+- [ ] `cd app && npm install && npm test`（47 文件 / 435 项；`quick-log-page.spec.ts` 偶发失败时重跑一次即可，见 §8）
 - [ ] `npm run build` 通过
 - [ ] `npm run preview` 能打开今日页，底部 tab 来回切换不卡死
 - [ ] 今日页顶部有一次性的「装到主屏幕」提示，点「知道了」后刷新不再出现
@@ -694,6 +740,10 @@ npm run build
 - [ ] `/data` 点「导出工作区文本」：下载到的文本包里能看到 `records/2026-xx-xx.md`、`data/foods.csv`（填过档案 / 校准过还会多出 `profile.md` / `targets.md`）；把记录文件放进工作区跑 `python scripts/nutrition.py check --all` 报 0 个问题
 - [ ] `/data` 选日期拍一张快照 → 删掉那天的某条记录 → 点「回滚到这一天」并确认：记录回来，
       报告里同时给出「回滚后」与「被替换掉的原状态」（列表里也会多一条「回滚前自动快照」，能再滚回去）
+- [ ] 今日页「更多」→「食物库」：概况数字与库里一致；搜「牛奶」能搜到；点「模型」只留模型条目；
+      疑似重复卡片里能看到 `鸡蛋(全蛋 生)` 与 `鸡蛋(水煮)` 并标着「数值完全相同」
+- [ ] 食物库里找一条**记过**的食物：删除按钮是禁用的（写着 FR-412）；找一条没记过的：能删掉；
+      把某条「停用」后，在记录页的食材检索里搜不到它，切到「已停用」还能恢复
 - [ ] `/profile` 填一份档案 → `/targets` 用首次估算写入目标，并在「校准记录」里看到一行
 - [ ] 在 `/targets` 把热量改掉 200 kcal：确认卡片要出现「超过 ±150 kcal」与「样本可能不足」提示
 - [ ] 在 `/settings/model` 填入自己的 OpenAI 兼容接口，连通性测试通过

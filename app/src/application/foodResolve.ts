@@ -6,13 +6,13 @@
  * 模型给的结果不直接落库——先过范围与宏量自洽校验，可疑项标出来让用户确认（FR-407）。
  */
 
-import { isAlcoholic, normalizeFoodName } from '@/domain/foodName'
+import { baseNameOf, isAlcoholic, normalizeFoodName } from '@/domain/foodName'
 import { isMacroConsistent } from '@/domain/nutrition'
 import { findByNormalizedName, listFoods, upsertFood } from '@/data/repositories/foods'
 import { enqueue, markOp } from '@/data/repositories/pendingOps'
 import { runTask, type RunFailure, type RunOptions } from '@/llm'
 import { foodResolveTask, type ResolvedFoodItem } from '@/llm/tasks/foodResolve'
-import { baseNameOf, findFoodFuzzy } from './foodLibrary'
+import { findFoodFuzzy } from './foodLibrary'
 import type { Confidence, Food, NutritionFacts } from '@/domain/types'
 
 /** 一次请求最多合并多少条未知食物（超出分批，§6.3）。 */
