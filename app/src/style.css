@@ -20,6 +20,14 @@
   --bg: #f6f7f6;
   --surface: #ffffff;
   --warn: #b45309;
+  /*
+   * 「柔和底色」三兄弟（2026-10-16 补）：以前这几处直接写死浅色值（#fffaf3 / #fff3cd / #fff），
+   * 深色下就成了「浅黄底 + 浅灰字」，读不清。颜色只写 token，两套主题各自给值。
+   * --warn-soft = 提醒卡片底、--flag-soft = 「待核对」数字的高亮底、--on-danger = 深色底上的文字。
+   */
+  --warn-soft: #fffaf3;
+  --flag-soft: #fff3cd;
+  --on-danger: #ffffff;
   --radius: 14px;
   --radius-sm: 10px;
   --gap: 12px;
@@ -50,6 +58,9 @@
   --bg: #12161a;
   --surface: #1b2026;
   --warn: #d9a05b;
+  --warn-soft: #2b2318;
+  --flag-soft: #3d3113;
+  --on-danger: #2a1414;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.5);
 
   --van-background: var(--surface);
@@ -259,8 +270,8 @@ body {
 }
 
 .card-warn {
-  border-color: var(--accent);
-  background: #fffaf3;
+  border-color: var(--warn);
+  background: var(--warn-soft);
 }
 
 .card-note {
@@ -429,6 +440,16 @@ body {
 .hint-list.warn-text,
 .warn-text {
   color: var(--warn);
+}
+
+/*
+ * 「待核对」的数字：报告 / 每日指导 / 校准三处共用（模型写出来的数里，对不上本地摘要的那些）。
+ * 以前三个页面各抄一份 `#fff3cd`，深色下「浅黄底 + 浅灰字」看不清 —— 颜色只写 token。
+ */
+.flagged {
+  background: var(--flag-soft);
+  border-bottom: 1px dashed var(--accent);
+  padding: 0 2px;
 }
 
 .tag {

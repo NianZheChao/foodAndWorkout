@@ -1,16 +1,21 @@
 <script setup lang="ts">
 /**
- * 食物库（T4.4 / M4 FR-402 / FR-406 / FR-408 / FR-411 / FR-412）。
+ * 食物库（T4.4 / M4 FR-402 / FR-406 / FR-411 / FR-412）。
  *
  * 三件事：
  * 1. **检索与来源筛选**（FR-402 / FR-411）：按名称搜、按来源（内置 / 模型 / 手工）与分类筛，
  *    全部本地完成，不消耗 token；
- * 2. **疑似重复提醒**（FR-408）：去括号后同名的一组列在一起，数值是否一致也说清楚，
- *    但**绝不自动合并** —— 括号里的生熟 / 全脂脱脂往往正是区别；
- * 3. **停用与删除**（FR-412）：被记录引用过的条目不能删除，只能停用；删除前二次确认，
+ * 2. **停用与删除**（FR-412）：被记录引用过的条目不能删除，只能停用；删除前二次确认，
  *    且真正的判据在 `application/foodAdmin.ts` 里（界面把按钮禁掉只是顺手）；
- * 4. **改数值**（FR-406）：模型给的是估算，用户手里的包装标签 / 实测值优先。填的时候缺项当场拦住，
+ * 3. **改数值**（FR-406）：模型给的是估算，用户手里的包装标签 / 实测值优先。填的时候缺项当场拦住，
  *    越界只提醒不拦（DR-06）；保存后来源改成「手工」并留痕。
+ *
+ * FR-408（近似重复）只剩「新增前提示合并」那一半，落在写记录那条链路上
+ * （`application/foodLibrary.ts` / `foodResolve.ts`）。这里曾有张「疑似重复」卡片，2026-10-16 下线：
+ * 真实的 114 条种子库里只有 5 组，其中 4 组**本来就该共存**（`牛奶(全脂)` / `牛奶(脱脂)`、
+ * `肥牛卷(生)` / `肥牛卷(生 偏肥)`、`豆腐(北)` / `豆腐(南)`、两瓶啤酒），唯一「数值完全相同」的
+ * `鸡蛋(全蛋 生)` / `鸡蛋(水煮)` 还是种子库有意留的。照它的建议「留一条、停用其余」，
+ * 删掉的恰好是用户真正要的那条。
  *
  * 停用的语义要讲明白：**不删除任何历史数值**。摄入条目存的是食物快照（DR-02），
  * 停用只是让它不再出现在检索与新增候选里。
@@ -21,7 +26,7 @@ import { showDialog, showToast } from 'vant'
 import AppHeader from '@/components/AppHeader.vue'
 import ChipSelect from '@/components/ChipSelect.vue'
 import { buildFoodOverview, deleteFood, editFoodFacts, setDisabled, SOURCE_LABELS, type FoodOverview } from '@/application/foodAdmin'
-import { baseNameOf, normalizeFoodName } from '@/domain/foodName'
+import { normalizeFoodName } from '@/domain/foodName'
 import { draftOfFood, emptyFactsDraft, reviewFactsEdit, type FoodFactsDraft } from '@/domain/foodEdit'
 import { fmtNumber } from '@/domain/format'
 import { NUTRIENT_KEYS, NUTRIENT_LABELS, NUTRIENT_UNITS, type NutrientKey } from '@/domain/nutrition'
@@ -223,35 +228,6 @@ async function saveEdit(food: Food): Promise<void> {
       </p>
     </div>
 
-    <div v-if="overview?.duplicates.length" class="card card-warn">
-      <h2 class="card-title">疑似重复（{{ overview.duplicates.length }} 组）</h2>
-      <p class="muted">
-        去掉括号后名字相同的条目。括号里的生熟 / 全脂脱脂往往<strong>正是区别</strong>，所以这里只提醒、不自动合并：
-        看清数值再决定留哪条、停用哪条。
-      </p>
-      <div v-for="group in overview.duplicates" :key="group.key" class="dup-group">
-        <div class="dup-head">
-          <span class="dup-name">{{ baseNameOf(group.foods[0].name) }}</span>
-          <span class="tag">{{ group.identicalFacts ? '数值完全相同' : '数值不同' }}</span>
-        </div>
-        <p class="muted">
-          {{
-            group.identicalFacts
-              ? '六项数值完全一致，基本可以确认是同一条：留一条、把其余的停用即可。'
-              : '主名相同但数值不同：先确认括号里的限定语是不是真的区别，别直接合并。'
-          }}
-        </p>
-        <ul class="hint-list">
-          <li v-for="food in group.foods" :key="food.id">
-            {{ food.name }} · {{ fmtNumber(food.kcal) }} kcal · {{ food.unit }}
-            <span class="muted">
-              （{{ SOURCE_LABELS[food.source] }}<template v-if="food.disabledFlag === 1"> · 已停用</template>）
-            </span>
-          </li>
-        </ul>
-      </div>
-    </div>
-
     <div v-if="!loaded" class="card">
       <p class="muted">读取中…</p>
     </div>
@@ -361,27 +337,6 @@ async function saveEdit(food: Food): Promise<void> {
 .filter-label {
   color: var(--text-muted);
   font-size: 13px;
-}
-
-.dup-group {
-  padding: 8px 0;
-  border-bottom: 1px dashed var(--border);
-}
-
-.dup-group:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-
-.dup-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.dup-name {
-  font-size: 15px;
-  font-weight: 600;
 }
 
 .food-row {

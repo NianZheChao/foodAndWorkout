@@ -81,6 +81,11 @@ export function sumFacts(list: readonly NutritionFacts[]): NutritionFacts {
   return total
 }
 
+/** 六项数值是否完全一致：改数值时用来判断「其实没改」（`application/foodAdmin.ts`）。 */
+export function sameFacts(a: NutritionFacts, b: NutritionFacts): boolean {
+  return NUTRIENT_KEYS.every((key) => a[key] === b[key])
+}
+
 export function macroKcal(facts: Pick<NutritionFacts, 'proteinG' | 'fatG' | 'carbG'>): number {
   return facts.proteinG * ATWATER.proteinG + facts.fatG * ATWATER.fatG + facts.carbG * ATWATER.carbG
 }

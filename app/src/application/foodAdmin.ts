@@ -1,18 +1,24 @@
 /**
- * 食物库治理（T4.4 / FR-406 / FR-408 / FR-411 / FR-412）。
+ * 食物库治理（T4.4 / FR-406 / FR-411 / FR-412）。
  *
- * 页面需要的东西一次算好（条目 + 引用数 + 疑似重复分组 + 统计），避免在界面里散着查库：
+ * 页面需要的东西一次算好（条目 + 引用数 + 统计），避免在界面里散着查库：
  * 1. **来源筛选**（FR-411）与分类筛选是界面的事，这里只保证把 `source` / `disabledFlag` 原样给出去；
- * 2. **疑似重复**（FR-408）交 `domain/foodAudit.ts` 分组，这里只负责喂数据；
- * 3. **删除保护**（FR-412）是业务规则，必须落在这一层：被记录引用过的条目一律拒绝删除，
+ * 2. **删除保护**（FR-412）是业务规则，必须落在这一层：被记录引用过的条目一律拒绝删除，
  *    界面把按钮禁掉只是顺手，绕不过这里；
- * 4. **手改数值**（FR-406 / DR-06）同样落在这一层：校验在 `domain/foodEdit.ts`，
+ * 3. **手改数值**（FR-406 / DR-06）同样落在这一层：校验在 `domain/foodEdit.ts`，
  *    来源替换（改成「手工」并留痕）在这里，历史记录不受影响（DR-02）。
+ *
+ * FR-408（近似重复提醒）只剩**新增前提示合并**这一半，落在 `application/foodLibrary.ts` /
+ * `foodResolve.ts`（写记录时问一句）。2026-10-16 下线了「疑似重复」静态分组卡片，理由是它的结论
+ * 不可执行：真实的 114 条种子库里只有 5 组（鸡蛋 / 牛奶 / 肥牛卷 / 豆腐 / 啤酒），其中 4 组是
+ * **设计上就该共存**的（全脂 vs 脱脂、生 vs 熟、南豆腐 vs 北豆腐），剩下那组「数值完全相同」的
+ * 还是种子库有意留的（`鸡蛋(全蛋 生)` / `鸡蛋(水煮)`）。照它的建议「留一条、停用其余」，
+ * 删掉的恰好是用户真正要的那条。真正需要拦的是「同一样东西被记了两遍」，那发生在新增那一刻。
  */
 
 import { getFood, listFoods, removeFood, saveFood, setFoodDisabled } from '@/data/repositories/foods'
 import { countIntakeByFood, tallyIntakeByFood } from '@/data/repositories/intake'
-import { groupSuspectedDuplicates, sameFoodFacts, type SuspectedDuplicateGroup } from '@/domain/foodAudit'
+import { sameFacts } from '@/domain/nutrition'
 import { applyFacts, reviewFactsEdit, type FoodFactsDraft } from '@/domain/foodEdit'
 import type { Food, FoodSource } from '@/domain/types'
 
@@ -27,7 +33,6 @@ export const SOURCE_LABELS: Record<FoodSource, string> = {
 export interface FoodOverview {
   /** 全部条目，含已停用（停用的排在后面由界面决定怎么显示） */
   foods: Food[]
-  duplicates: SuspectedDuplicateGroup[]
   /** `foodId` → 被多少条摄入记录引用过 */
   references: Map<string, number>
   stats: {
@@ -45,7 +50,6 @@ export async function buildFoodOverview(): Promise<FoodOverview> {
   for (const food of foods) bySource[food.source] += 1
   return {
     foods,
-    duplicates: groupSuspectedDuplicates(foods),
     references,
     stats: {
       total: foods.length,
@@ -98,7 +102,7 @@ export async function editFoodFacts(id: string, draft: FoodFactsDraft, note = ''
   if (!food) return { ok: false, reason: '这条食物已经不在了（可能被删除或重新导入过）' }
   const review = reviewFactsEdit(food, draft)
   if (!review.ok || !review.facts) return { ok: false, reason: review.error ?? '这组数值没通过校验' }
-  if (sameFoodFacts(food, review.facts)) return { ok: false, reason: '六项数值和现在完全一样，没有要保存的改动' }
+  if (sameFacts(food, review.facts)) return { ok: false, reason: '六项数值和现在完全一样，没有要保存的改动' }
   await saveFood({
     ...applyFacts(food, review.facts),
     source: 'manual',

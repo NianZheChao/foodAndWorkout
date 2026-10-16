@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 /**
- * 报告页（T3.3）：列表 → 生成 → 详情 → 编辑 / 重新生成。
+ * 报告页（T3.3）：列表 → 生成 → 详情 → 编辑 / 重新生成 / 删除。
  *
- * 重点看三件用户能看见的事：文字没生成时数值区照样在、待核对的数字被高亮、
- * 「重新生成」不覆盖旧版本。
+ * 重点看四件用户能看见的事：文字没生成时数值区照样在、待核对的数字被高亮、
+ * 「重新生成」不覆盖旧版本、列表与详情都能**删掉**不要的报告（删的只是视图，
+ * 原始记录一条都不动）。
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -16,7 +17,14 @@ import { routes } from '@/router'
 import { db } from '@/data/db'
 import { addIntake } from '@/data/repositories/intake'
 import { updateDay } from '@/data/repositories/days'
-import { listReports } from '@/data/repositories/reports'
+import { getReport, listReports } from '@/data/repositories/reports'
+
+// 删除要先弹确认框：jsdom 里没人点它，`showDialog` 的 promise 永远不 resolve。
+// 只替掉这一个函数，`van-button` / `van-field` 之类的真实组件照旧。
+vi.mock('vant', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vant')>()
+  return { ...actual, showDialog: vi.fn(async () => undefined) }
+})
 import { putTargets } from '@/data/repositories/targets'
 import { saveModelConfig } from '@/data/repositories/modelConfig'
 import { addDays, todayIso } from '@/app/date'
@@ -91,7 +99,9 @@ async function seedDays(intakeDays = 2): Promise<void> {
 }
 
 /** 生成一份报告并打开详情页，返回详情页 wrapper。 */
-async function generateAndOpen(summary = '本期平均每天多吃了 380 kcal。'): Promise<VueWrapper> {
+async function generateAndOpen(
+  summary = '本期平均每天多吃了 380 kcal。'
+): Promise<{ wrapper: VueWrapper; router: Router }> {
   await seedDays()
   await saveModelConfig({ baseUrl: 'https://example.com/v1', apiKey: 'sk-test', model: 'stub' })
   vi.stubGlobal('fetch', stubFetch([chatOk(reportJson({ summary }))]).fetchImpl)
@@ -102,8 +112,7 @@ async function generateAndOpen(summary = '本期平均每天多吃了 380 kcal�
     expect((await listReports()).length).toBe(1)
   })
   const id = (await listReports())[0].id
-  const detail = await mountAt(`/reports/${id}`, ReportDetailPage)
-  return detail.wrapper
+  return mountAt(`/reports/${id}`, ReportDetailPage)
 }
 
 beforeEach(async () => {
@@ -154,6 +163,29 @@ describe('报告列表页', () => {
     expect(saved.digest.intake.avgKcal).toBeCloseTo(1700, 1)
   })
 
+  it('删掉一份报告：列表与库里都没有了，原始记录一条不动', async () => {
+    await seedDays()
+    const { wrapper } = await mountAt('/reports', ReportsPage)
+    await button(wrapper, '本周').trigger('click')
+    await vi.waitFor(async () => {
+      expect((await listReports()).length).toBe(1)
+    })
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('待生成文字')
+    })
+
+    await button(wrapper, '删除').trigger('click')
+
+    await vi.waitFor(async () => {
+      expect(await listReports()).toHaveLength(0)
+    })
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('还没有报告')
+    })
+    // 视图没了，原始记录还在（这是「删报告不影响数据」的那条边界）
+    expect(await db.intake.count()).toBe(2)
+  })
+
   it('配好模型后生成成功，直接进详情页', async () => {
     await seedDays()
     await saveModelConfig({ baseUrl: 'https://example.com/v1', apiKey: 'sk-test', model: 'stub' })
@@ -170,7 +202,7 @@ describe('报告列表页', () => {
 
 describe('报告详情页', () => {
   it('数值区给出本地算出来的数，文字区标出待核对数字', async () => {
-    const wrapper = await generateAndOpen()
+    const { wrapper } = await generateAndOpen()
     const text = wrapper.text()
 
     expect(text).toContain('数值区（本地计算）')
@@ -209,7 +241,7 @@ describe('报告详情页', () => {
   })
 
   it('编辑文字后留痕，数值区不动', async () => {
-    const wrapper = await generateAndOpen()
+    const { wrapper } = await generateAndOpen()
     await button(wrapper, '编辑文字').trigger('click')
     await flushPromises()
 
@@ -228,8 +260,22 @@ describe('报告详情页', () => {
     expect((await listReports())[0].digest.intake.avgKcal).toBeCloseTo(1700, 1)
   })
 
+  it('详情页也能删掉这一版：删完回列表，库里没有', async () => {
+    const { wrapper, router } = await generateAndOpen()
+    const id = (await listReports())[0].id
+
+    await button(wrapper, '删除这份报告').trigger('click')
+
+    await vi.waitFor(async () => {
+      expect(await getReport(id)).toBeUndefined()
+    })
+    await vi.waitFor(() => {
+      expect(router.currentRoute.value.path).toBe('/reports')
+    })
+  })
+
   it('重新生成会新建一版，旧版本还在（FR-710）', async () => {
-    const wrapper = await generateAndOpen()
+    const { wrapper } = await generateAndOpen()
     vi.stubGlobal('fetch', stubFetch([chatOk(reportJson({ summary: '第二版。' }))]).fetchImpl)
 
     await button(wrapper, '重新生成').trigger('click')

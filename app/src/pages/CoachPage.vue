@@ -286,12 +286,6 @@ const SHARE_LABELS: { key: keyof ShareRecovery; label: string }[] = [
   line-height: 1.7;
 }
 
-.flagged {
-  background: #fff3cd;
-  border-bottom: 1px dashed var(--accent);
-  padding: 0 2px;
-}
-
 .basis {
   display: block;
   margin-top: 4px;

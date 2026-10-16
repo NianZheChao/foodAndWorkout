@@ -639,7 +639,7 @@ const carbPerKg = computed(() => {
 <style scoped>
 .card-confirm {
   border-color: var(--warn);
-  background: #fffaf3;
+  background: var(--warn-soft);
 }
 
 .calib-row {

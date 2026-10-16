@@ -2,12 +2,23 @@
 /**
  * 外观（T4.6 / FR-1606）：三选一 → 文档根节点上的 `data-theme` + Vant 的 `van-theme-dark`。
  *
- * 守四件事：**「跟随系统」真的跟着系统变**、**手动选了浅色 / 深色就不再跟**、
- * **改完立刻生效（写库只保证下次打开是对的）**、**没有 `matchMedia` 的环境不炸**。
+ * 守五件事：**「跟随系统」真的跟着系统变**、**手动选了浅色 / 深色就不再跟**、
+ * **改完立刻生效（写库只保证下次打开是对的）**、**没有 `matchMedia` 的环境不炸**、
+ * **拿不到 CSS 变量的地方（图表）能跟着 `data-theme` 变**。
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { applyTheme, applyThemeFromSettings, resolveTheme, startThemeSync, systemPrefersDark } from '@/app/theme'
+import { effectScope } from 'vue'
+import {
+  applyTheme,
+  applyThemeFromSettings,
+  currentTheme,
+  resolveTheme,
+  startThemeSync,
+  systemPrefersDark,
+  useResolvedTheme,
+  watchResolvedTheme
+} from '@/app/theme'
 import { db } from '@/data/db'
 import { getSettings, saveSettings } from '@/data/repositories/settings'
 
@@ -106,6 +117,45 @@ describe('外观', () => {
     scheme.flip(true)
     await tick()
     expect(document.documentElement.dataset.theme).toBe('light')
+  })
+
+  it('当前外观读 <html data-theme>；变色时观察者拿到新值，停了就不再收', async () => {
+    expect(currentTheme()).toBe('light')
+
+    const seen: string[] = []
+    const stop = watchResolvedTheme((next) => seen.push(next))
+
+    applyTheme('dark')
+    expect(currentTheme()).toBe('dark')
+    await vi.waitFor(() => {
+      expect(seen).toEqual(['dark'])
+    })
+
+    stop()
+    applyTheme('light')
+    await tick()
+    expect(seen).toEqual(['dark'])
+  })
+
+  it('组件里用 useResolvedTheme：值跟着外观走，作用域销毁后自动断开', async () => {
+    applyTheme('light')
+    const scope = effectScope()
+    const theme = scope.run(() => useResolvedTheme())
+    if (!theme) throw new Error('effectScope 里没拿到 ref')
+    expect(theme.value).toBe('light')
+
+    applyTheme('dark')
+    await vi.waitFor(() => {
+      expect(theme.value).toBe('dark')
+    })
+
+    applyTheme('light')
+    await tick()
+    scope.stop()
+    applyTheme('dark')
+    await tick()
+    // 观察者已断开：作用域销毁之后系统里再怎么变都不该动这个值
+    expect(theme.value).toBe('light')
   })
 
   it('启动时按库里的设置应用一次', async () => {

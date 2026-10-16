@@ -10,6 +10,7 @@
  * 组件不需要知道设置存在哪儿。这里也**不缓存**当前选择：`settings` 是唯一事实来源。
  */
 
+import { onScopeDispose, ref, type Ref } from 'vue'
 import { getSettings } from '@/data/repositories/settings'
 import type { SettingsRecord } from '@/domain/types'
 
@@ -42,6 +43,33 @@ export function applyTheme(choice: ThemeChoice, prefersDark = systemPrefersDark(
 export async function applyThemeFromSettings(): Promise<ResolvedTheme> {
   const settings = await getSettings()
   return applyTheme(settings.theme)
+}
+
+/**
+ * 当前生效的外观：读 `<html data-theme>`（**写它的人只有 `applyTheme`**，这里不缓存）。
+ * 给图表这类拿不到 CSS 变量的地方用（见 `app/chartTheme.ts`）。
+ */
+export function currentTheme(): ResolvedTheme {
+  if (typeof document === 'undefined') return 'light'
+  return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'
+}
+
+/** 观察 `<html data-theme>` 的变化（`applyTheme` 是唯一写入方，所以挂一个观察者就够）。返回停止函数。 */
+export function watchResolvedTheme(handler: (theme: ResolvedTheme) => void): () => void {
+  if (typeof document === 'undefined' || typeof MutationObserver !== 'function') return () => undefined
+  const observer = new MutationObserver(() => handler(currentTheme()))
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+  return () => observer.disconnect()
+}
+
+/** 组件里用：跟着外观走的响应式值，卸载时自动断开观察者。 */
+export function useResolvedTheme(): Ref<ResolvedTheme> {
+  const theme = ref(currentTheme())
+  const stop = watchResolvedTheme((next) => {
+    theme.value = next
+  })
+  onScopeDispose(stop)
+  return theme
 }
 
 /**

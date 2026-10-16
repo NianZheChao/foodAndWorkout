@@ -31,9 +31,12 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: '推荐清单', spec: 'M8 B 级 FR-801~807 / §6.5 / §6.6' }
   },
 
-  // 记录：三块面板（饮食 / 训练 / 身体）共用一个域根 `/log`，日期由它统一持有
+  // 记录：三块面板（饮食 / 训练 / 身体）共用一个壳（LogHubPage），日期由它统一持有。
+  // 域根就是**饮食面板**（`/log/diet`）—— 以前 `/log` 与 `/log/diet` 各是一条路由、
+  // 渲染的是同一个面板，页头那条导航条于是并排出现「记录」「饮食」两颗同样的格子。
+  { path: '/log', redirect: '/log/diet' },
   { path: '/log/quick', name: 'log-quick', component: () => import('@/pages/LogQuickPage.vue'), meta: { title: '一句话 / 拍照记录', spec: 'FR-110 / FR-111 / FR-113' } },
-  { path: '/log/:kind(diet|workout|body)?', name: 'log', component: () => import('@/pages/LogHubPage.vue'), meta: { title: '记录', spec: 'M1 FR-100 / M2 FR-200 / M3 FR-300' } },
+  { path: '/log/:kind(diet|workout|body)', name: 'log', component: () => import('@/pages/LogHubPage.vue'), meta: { title: '记录', spec: 'M1 FR-100 / M2 FR-200 / M3 FR-300' } },
   { path: '/foods', name: 'foods', component: () => import('@/pages/FoodsPage.vue'), meta: { title: '食物库', spec: 'M4 FR-400' } },
 
   // 分析：看数据（趋势 / 报告）与调目标（目标 / 校准）

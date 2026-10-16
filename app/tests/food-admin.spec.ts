@@ -1,10 +1,12 @@
 // @vitest-environment node
 /**
- * 食物库治理（T4.4 / FR-408 / FR-411 / FR-412）。
+ * 食物库治理（T4.4 / FR-411 / FR-412）。
  *
- * 守四件事：**疑似重复只提醒不合并**（数值相同 / 不同要说清）、**停用后不再出现在检索里但历史记录
- * 不受影响**、**被记录引用过的条目删不掉**（业务规则在应用层，不只是界面把按钮禁掉）、
- * 统计口径（来源 / 停用 / 被引用）与库里一致。
+ * 守三件事：**停用后不再出现在检索里但历史记录不受影响**、**被记录引用过的条目删不掉**
+ * （业务规则在应用层，不只是界面把按钮禁掉）、统计口径（来源 / 停用 / 被引用）与库里一致。
+ *
+ * 这里原有「疑似重复分组（FR-408）」两组用例，2026-10-16 连同卡片一起下线：
+ * FR-408 只剩「新增前提示合并」那一半，用例在 `food-resolve.spec.ts`。
  */
 
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -12,10 +14,9 @@ import { db } from '@/data/db'
 import { buildFoodOverview, deleteFood, setDisabled, SOURCE_LABELS } from '@/application/foodAdmin'
 import { listFoods, searchFoods, seedFoods, upsertFood, type UpsertFoodInput } from '@/data/repositories/foods'
 import { addIntake, countIntakeByFood } from '@/data/repositories/intake'
-import { groupSuspectedDuplicates, sameFoodFacts } from '@/domain/foodAudit'
-import { baseNameOf, looseFoodKey } from '@/domain/foodName'
+
 import { foodSeed, FOOD_SEED_VERSION } from '@/data/seed'
-import type { Food, FoodSource, IntakeEntry } from '@/domain/types'
+import type { FoodSource, IntakeEntry } from '@/domain/types'
 
 const EGG = '鸡蛋(全蛋 生)'
 const BOILED_EGG = '鸡蛋(水煮)'
@@ -66,27 +67,6 @@ beforeEach(async () => {
   await Promise.all(db.tables.map((table) => table.clear()))
 })
 
-describe('疑似重复分组（FR-408）', () => {
-  it('去括号后同名归一组；数值完全一致与不一致要分开标', async () => {
-    await seedLibrary()
-    const groups = groupSuspectedDuplicates(await listFoods({ includeDisabled: true }))
-
-    expect(groups.map((group) => group.key)).toEqual(['鸡蛋', '牛奶'])
-    const [eggGroup, milkGroup] = groups
-    expect(eggGroup.foods.map((food) => food.name).sort()).toEqual([BOILED_EGG, EGG].sort())
-    expect(eggGroup.identicalFacts).toBe(true)
-    expect(milkGroup.identicalFacts).toBe(false)
-    // 孤立条目自己不成组
-    expect(groups.flatMap((group) => group.foods.map((food) => food.name))).not.toContain(CHICKEN)
-  })
-
-  it('括号承载区别：宽松键故意丢掉括号，精确键保留', async () => {
-    expect(looseFoodKey(WHOLE_MILK)).toBe(looseFoodKey(SKIM_MILK))
-    expect(baseNameOf(WHOLE_MILK)).toBe('牛奶')
-    expect(sameFoodFacts({ kcal: 1, proteinG: 2, fatG: 3, carbG: 4, fiberG: 5, sodiumMg: 6 }, { kcal: 1, proteinG: 2, fatG: 3, carbG: 4, fiberG: 5, sodiumMg: 6 })).toBe(true)
-  })
-})
-
 describe('概况统计（FR-411）', () => {
   it('按来源 / 停用 / 被引用统计，引用次数与摄入记录一致', async () => {
     await seedLibrary()
@@ -108,13 +88,12 @@ describe('概况统计（FR-411）', () => {
     expect(Object.values(SOURCE_LABELS)).toEqual(['内置', '模型', '手工'])
   })
 
-  it('种子库装进来也不炸（真实 114 条的口径）', async () => {
+  it('种子库整库装进来也不会算重（真实 114 条的口径）', async () => {
     await seedFoods(foodSeed, FOOD_SEED_VERSION)
     const overview = await buildFoodOverview()
     expect(overview.stats.total).toBe(foodSeed.length)
     expect(overview.stats.bySource.seed).toBe(foodSeed.length)
-    // 种子库里本来就有 `鸡蛋(全蛋 生)` / `鸡蛋(水煮)` 这一对
-    expect(overview.duplicates.some((group) => group.key === '鸡蛋')).toBe(true)
+    expect(overview.stats.referenced).toBe(0)
   })
 })
 
@@ -159,16 +138,5 @@ describe('删除保护（FR-412）', () => {
     expect(await deleteFood(CHICKEN)).toEqual({ ok: true })
     expect(await db.foods.get(CHICKEN)).toBeUndefined()
     expect(await listFoods({ includeDisabled: true })).toHaveLength(4)
-  })
-})
-
-describe('分组在停用后不变', () => {
-  it('停用只是换个 flag，组里照旧看得见（治理页要看得到成对关系）', async () => {
-    await seedLibrary()
-    await setDisabled(BOILED_EGG, true)
-    const [eggGroup] = groupSuspectedDuplicates(await listFoods({ includeDisabled: true }))
-    const names = eggGroup.foods.map((food: Food) => food.name)
-    expect(names).toHaveLength(2)
-    expect(names).toContain(BOILED_EGG)
   })
 })

@@ -11,6 +11,8 @@ import { computed, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import EchartView, { type ChartOption } from '@/components/EchartView.vue'
+import { chartPalette } from '@/app/chartTheme'
+import { useResolvedTheme } from '@/app/theme'
 import { addDays, formatDateCn, recentDates, todayIso } from '@/app/date'
 import { getTargets } from '@/data/repositories/targets'
 import { listDaysInRange } from '@/data/repositories/days'
@@ -30,9 +32,27 @@ import {
 } from '@/domain/trend'
 import type { TargetsRecord } from '@/domain/types'
 
-const BRAND = '#2f7d5b'
-const ACCENT = '#b45309'
-const SERIES2 = '#2563eb'
+/**
+ * 图表配色跟着外观走（FR-1606）：ECharts 把颜色直接画进 SVG，**读不到 CSS 变量**，
+ * 所以按外观给两套取值（`app/chartTheme.ts`）。那里与 `style.css` 的 token 逐项对齐，
+ * 由 `tests/theme-tokens.spec.ts` 比对 —— 改一处忘另一处会直接失败。
+ */
+const theme = useResolvedTheme()
+const palette = computed(() => chartPalette(theme.value))
+
+/*
+ * 轴 / 图例 / 提示框的公共样式：ECharts 的默认配色是照着浅色底定的 —— 轴标签与图例是深灰、
+ * 提示框写死白底。深色下前者糊在近黑的背景里、后者点一下闪一块白，所以一律跟着 token 走。
+ */
+const axisLabel = computed(() => ({ fontSize: 10, color: palette.value.text }))
+const axisName = computed(() => ({ fontSize: 10, color: palette.value.text }))
+const splitLine = computed(() => ({ lineStyle: { color: palette.value.splitLine } }))
+const tooltip = computed(() => ({
+  trigger: 'axis' as const,
+  backgroundColor: palette.value.tooltipBg,
+  borderColor: palette.value.tooltipBorder,
+  textStyle: { color: palette.value.text }
+}))
 /** 图表内边距：ECharts 6 的 `containLabel` 需要额外特性包，这里直接用固定留白。 */
 const GRID = { left: 48, right: 52, top: 36, bottom: 24 }
 
@@ -133,17 +153,28 @@ function switchWindow(days: TrendWindow): void {
 const rows = computed(() => trend.value?.rows ?? [])
 
 const weightOption = computed<ChartOption>(() => ({
-  tooltip: { trigger: 'axis' },
-  legend: { data: ['晨重', '7 日均线'], top: 0, itemHeight: 8, textStyle: { fontSize: 11 } },
+  tooltip: tooltip.value,
+  legend: { data: ['晨重', '7 日均线'], top: 0, itemHeight: 8, textStyle: { fontSize: 11, color: palette.value.text } },
   grid: GRID,
-  xAxis: { type: 'category', data: rows.value.map((row) => shortDate(row.date)), axisLabel: { fontSize: 10 } },
-  yAxis: { type: 'value', scale: true, name: 'kg', nameTextStyle: { fontSize: 10 }, axisLabel: { fontSize: 10 } },
+  xAxis: {
+    type: 'category',
+    data: rows.value.map((row) => shortDate(row.date)),
+    axisLabel: axisLabel.value
+  },
+  yAxis: {
+    type: 'value',
+    scale: true,
+    name: 'kg',
+    nameTextStyle: axisName.value,
+    axisLabel: axisLabel.value,
+    splitLine: splitLine.value
+  },
   series: [
     {
       name: '晨重',
       type: 'scatter',
       symbolSize: 7,
-      itemStyle: { color: BRAND },
+      itemStyle: { color: palette.value.series1 },
       data: rows.value.map((row) => (row.weightAmKg === undefined ? null : round1(row.weightAmKg)))
     },
     {
@@ -151,7 +182,7 @@ const weightOption = computed<ChartOption>(() => ({
       type: 'line',
       smooth: true,
       symbolSize: 4,
-      itemStyle: { color: ACCENT },
+      itemStyle: { color: palette.value.series2 },
       connectNulls: false,
       data: rows.value.map((row) => (row.ma === undefined ? null : Number(row.ma.toFixed(2))))
     }
@@ -162,26 +193,30 @@ const intakeOption = computed<ChartOption>(() => {
   const kcalTarget = targetValues.value.kcalTarget
   const proteinTarget = targetValues.value.proteinTargetG
   return {
-    tooltip: { trigger: 'axis' },
-    legend: { data: ['热量', '蛋白'], top: 0, itemHeight: 8, textStyle: { fontSize: 11 } },
+    tooltip: tooltip.value,
+    legend: { data: ['热量', '蛋白'], top: 0, itemHeight: 8, textStyle: { fontSize: 11, color: palette.value.text } },
     grid: GRID,
-    xAxis: { type: 'category', data: rows.value.map((row) => shortDate(row.date)), axisLabel: { fontSize: 10 } },
+    xAxis: {
+      type: 'category',
+      data: rows.value.map((row) => shortDate(row.date)),
+      axisLabel: axisLabel.value
+    },
     yAxis: [
-      { type: 'value', name: 'kcal', nameTextStyle: { fontSize: 10 }, axisLabel: { fontSize: 10 } },
-      { type: 'value', name: 'g', nameTextStyle: { fontSize: 10 }, axisLabel: { fontSize: 10 } }
+      { type: 'value', name: 'kcal', nameTextStyle: axisName.value, axisLabel: axisLabel.value, splitLine: splitLine.value },
+      { type: 'value', name: 'g', nameTextStyle: axisName.value, axisLabel: axisLabel.value, splitLine: splitLine.value }
     ],
     series: [
       {
         name: '热量',
         type: 'bar',
-        itemStyle: { color: BRAND },
+        itemStyle: { color: palette.value.series1 },
         data: rows.value.map((row) => (row.hasIntakeRows ? round1(row.intake.kcal) : null)),
         markLine: kcalTarget
           ? {
               silent: true,
               symbol: 'none',
-              label: { formatter: `热量目标 ${kcalTarget}`, fontSize: 10, position: 'insideEndTop' },
-              lineStyle: { color: ACCENT, type: 'dashed' },
+              label: { formatter: `热量目标 ${kcalTarget}`, fontSize: 10, position: 'insideEndTop', color: palette.value.text },
+              lineStyle: { color: palette.value.series2, type: 'dashed' },
               data: [{ yAxis: kcalTarget }]
             }
           : undefined
@@ -191,14 +226,14 @@ const intakeOption = computed<ChartOption>(() => {
         type: 'line',
         yAxisIndex: 1,
         symbolSize: 5,
-        itemStyle: { color: SERIES2 },
+        itemStyle: { color: palette.value.series3 },
         data: rows.value.map((row) => (row.hasIntakeRows ? round1(row.intake.proteinG) : null)),
         markLine: proteinTarget
           ? {
               silent: true,
               symbol: 'none',
-              label: { formatter: `蛋白目标 ${proteinTarget}`, fontSize: 10, position: 'insideEndTop' },
-              lineStyle: { color: SERIES2, type: 'dashed' },
+              label: { formatter: `蛋白目标 ${proteinTarget}`, fontSize: 10, position: 'insideEndTop', color: palette.value.text },
+              lineStyle: { color: palette.value.series3, type: 'dashed' },
               data: [{ yAxis: proteinTarget }]
             }
           : undefined
@@ -208,19 +243,23 @@ const intakeOption = computed<ChartOption>(() => {
 })
 
 const trainingOption = computed<ChartOption>(() => ({
-  tooltip: { trigger: 'axis' },
-  legend: { data: ['容量负荷', '组数'], top: 0, itemHeight: 8, textStyle: { fontSize: 11 } },
+  tooltip: tooltip.value,
+  legend: { data: ['容量负荷', '组数'], top: 0, itemHeight: 8, textStyle: { fontSize: 11, color: palette.value.text } },
   grid: GRID,
-  xAxis: { type: 'category', data: rows.value.map((row) => shortDate(row.date)), axisLabel: { fontSize: 10 } },
+  xAxis: {
+    type: 'category',
+    data: rows.value.map((row) => shortDate(row.date)),
+    axisLabel: axisLabel.value
+  },
   yAxis: [
-    { type: 'value', name: 'kg', nameTextStyle: { fontSize: 10 }, axisLabel: { fontSize: 10 } },
-    { type: 'value', name: '组', nameTextStyle: { fontSize: 10 }, axisLabel: { fontSize: 10 } }
+    { type: 'value', name: 'kg', nameTextStyle: axisName.value, axisLabel: axisLabel.value, splitLine: splitLine.value },
+    { type: 'value', name: '组', nameTextStyle: axisName.value, axisLabel: axisLabel.value, splitLine: splitLine.value }
   ],
   series: [
     {
       name: '容量负荷',
       type: 'bar',
-      itemStyle: { color: BRAND },
+      itemStyle: { color: palette.value.series1 },
       data: rows.value.map((row) => (row.load ? round1(row.load) : null))
     },
     {
@@ -228,12 +267,11 @@ const trainingOption = computed<ChartOption>(() => ({
       type: 'line',
       yAxisIndex: 1,
       symbolSize: 5,
-      itemStyle: { color: ACCENT },
+      itemStyle: { color: palette.value.series2 },
       data: rows.value.map((row) => (row.sets ? row.sets : null))
     }
   ]
 }))
-
 const tdeeRow = computed(() => {
   const estimate = trend.value?.tdee.estimate
   if (!estimate) return undefined

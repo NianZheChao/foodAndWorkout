@@ -102,18 +102,14 @@ beforeEach(async () => {
 })
 
 describe('食物库页', () => {
-  it('概况与疑似重复：成组的条目列在一起，数值是否一致说清楚', async () => {
+  it('概况：总数 / 来源分布 / 停用与被引用数一次说清', async () => {
     await seedLibrary()
     const wrapper = await mountPage()
 
     expect(wrapper.text()).toContain('共 5 条 · 内置 2 · 模型 2 · 手工 1')
     expect(wrapper.text()).toContain('已停用 0 条 · 被记录引用过 1 条')
-    expect(wrapper.text()).toContain('疑似重复（2 组）')
-    expect(wrapper.text()).toContain('数值完全相同')
-    expect(wrapper.text()).toContain('数值不同')
-    // 组里两条都在
-    expect(wrapper.text()).toContain(BOILED_EGG)
-    expect(wrapper.text()).toContain(SKIM_MILK)
+    // 「疑似重复」卡片 2026-10-16 下线：这里不再渲染任何按名字分组的提醒
+    expect(wrapper.text()).not.toContain('疑似重复')
   })
 
   it('检索按名称过滤；每个条目都写明被多少条记录引用', async () => {

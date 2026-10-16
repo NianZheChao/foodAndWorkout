@@ -9,10 +9,10 @@
 
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { showToast } from 'vant'
+import { showDialog, showToast } from 'vant'
 import AppHeader from '@/components/AppHeader.vue'
 import { generateReport, saveEditedContent } from '@/application/report'
-import { getReport } from '@/data/repositories/reports'
+import { getReport, removeReport } from '@/data/repositories/reports'
 import { confirmOverBudget } from '@/app/budget'
 import { buildNumberWhitelist } from '@/domain/reportGuard'
 import { coverageWarning } from '@/domain/reportDigest'
@@ -70,6 +70,28 @@ async function regenerate(): Promise<void> {
       showToast({ message: '已生成新版本，旧版本留在列表里', position: 'bottom' })
       await router.push(`/reports/${outcome.report.id}`)
     }
+  } finally {
+    busy.value = false
+  }
+}
+
+/** 删掉这一版：只删报告本身，原始记录一条都不动（FR-710 的「留旧版本」不拦删除，只保证默认不丢）。 */
+async function remove(): Promise<void> {
+  const current = report.value
+  if (!current) return
+  try {
+    await showDialog({
+      title: `删除${current.type === 'weekly' ? '周报' : '月报'}「${current.label}」`,
+      message: '报告是本机算出来的一份视图，删掉不影响任何原始记录（饮食 / 训练 / 体重都还在）。需要时重新生成即可。'
+    })
+  } catch {
+    return
+  }
+  busy.value = true
+  try {
+    await removeReport(current.id)
+    showToast({ message: '已删除', position: 'bottom' })
+    await router.push('/reports')
   } finally {
     busy.value = false
   }
@@ -327,6 +349,7 @@ const whitelistSize = computed(() => (digest.value ? buildNumberWhitelist(digest
         </van-button>
         <van-button plain block :loading="busy" @click="regenerate">重新生成（保留这一版）</van-button>
         <van-button plain block @click="router.push('/reports')">回报告列表</van-button>
+        <van-button plain block :loading="busy" @click="remove">删除这份报告</van-button>
       </div>
     </template>
   </section>
@@ -339,9 +362,4 @@ const whitelistSize = computed(() => (digest.value ? buildNumberWhitelist(digest
   line-height: 1.7;
 }
 
-.flagged {
-  background: #fff3cd;
-  border-bottom: 1px dashed var(--accent);
-  padding: 0 2px;
-}
 </style>

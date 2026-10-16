@@ -284,9 +284,4 @@ async function adopt(): Promise<void> {
 </template>
 
 <style scoped>
-.flagged {
-  background: #fff3cd;
-  border-bottom: 1px dashed var(--accent);
-  padding: 0 2px;
-}
 </style>

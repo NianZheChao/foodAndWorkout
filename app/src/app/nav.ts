@@ -37,6 +37,12 @@ export interface NavDomain {
   /** 域根页：底部 tab 的跳转目标，也是面包屑的第一级 */
   root: string
   rootName: string
+  /**
+   * 域根那颗格子的文案，缺省用域的名字（`label`）。
+   * 「记录」域是唯一用到的：它的根页就是饮食面板，格子写「饮食」比写「记录」更准
+   * （写「记录」时它和 tab 同名、又和旁边的「饮食」指同一个页面，等于两个名字一件事）。
+   */
+  rootLabel?: string
   /** 高亮前缀：必须覆盖本域**全部**页面（含详情页） */
   match: string[]
   /** 域内其它页面（不含域根：域根由底部 tab 代表） */
@@ -61,11 +67,13 @@ export const navDomains: NavDomain[] = [
     key: 'log',
     label: '记录',
     icon: 'records-o',
-    root: '/log',
+    // 根页就是饮食面板（`/log` 只是它的旧地址，在路由表里 302 到 `/log/diet`）——
+    // 以前根页与「饮食」是两颗指向同一个页面的格子，页头上「记录」「饮食」并排出现
+    root: '/log/diet',
     rootName: 'log',
+    rootLabel: '饮食',
     match: ['/log', '/foods'],
     pages: [
-      { id: 'log-diet', label: '饮食', path: '/log/diet', routerName: 'log' },
       { id: 'log-workout', label: '训练', path: '/log/workout', routerName: 'log' },
       { id: 'log-body', label: '身体', path: '/log/body', routerName: 'log' },
       { id: 'log-quick', label: '一句话记录', path: '/log/quick', routerName: 'log-quick' },
@@ -177,7 +185,7 @@ export function navLocation(path: string, routerName?: string | null): NavLocati
     domain.pages.find((item) => item.routerName === routerName)
 
   const chips: NavChip[] = [
-    { label: domain.label, path: domain.root, active: path === domain.root },
+    { label: domain.rootLabel ?? domain.label, path: domain.root, active: path === domain.root },
     ...domain.pages
       .filter((item) => !item.hidden)
       .map((item) => ({

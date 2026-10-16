@@ -24,6 +24,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { navDomains, navTabs, navLocation } from '@/app/nav'
+import type { RouteRecordRaw } from 'vue-router'
 import { routes } from '@/router'
 
 // jsdom 环境下 `import.meta.url` 不是 file: 协议，用 cwd（vitest 的工作目录就是 app/）定位源码
@@ -40,20 +41,29 @@ function collectFiles(dir: string, out: string[] = []): string[] {
 
 /**
  * 把路由表里的一条路径展开成它能落到的具体路径。
- * 本项目只用到三种写法：`/summary/:date?`（可选参数，去掉）、
- * `/log/:kind(diet|workout|body)?`（可选枚举，展开）、`/reports/:id`（必填参数，原样保留）。
+ * 本项目只用到这几种写法：`/summary/:date?`（可选参数，去掉）、
+ * `/log/:kind(diet|workout|body)`（枚举，展开成三条）、`/reports/:id`（必填参数，原样保留）。
  */
 function expandRoute(path: string): string[] {
-  if (path === '/') return []
-  const alternation = path.match(/^(.*)\/:[^/]*\(([^)]+)\)\?$/)
+  const alternation = path.match(/^(.*)\/:[^/]*\(([^)]+)\)(\?)?$/)
   if (alternation) {
     const base = alternation[1]
-    return [base, ...alternation[2].split('|').map((value) => `${base}/${value}`)]
+    const values = alternation[2].split('|').map((value) => `${base}/${value}`)
+    // 带 `?` 的枚举自己还有一条 base 路径（如 `/log`），不带 `?` 的只展开成枚举值
+    return alternation[3] ? [base, ...values] : values
   }
   return [path.replace(/\/:[^/]*\?$/, '')]
 }
 
-const routePaths = routes.flatMap((route) => expandRoute(route.path))
+/**
+ * 只做跳转、没有页面组件的记录（现在的 `/` 与 `/log`）不进比对：
+ * 它们不渲染任何东西，也就没有「同级入口」这回事。
+ */
+function isPageRoute(route: RouteRecordRaw): boolean {
+  return 'component' in route || !('redirect' in route)
+}
+
+const routePaths = routes.filter(isPageRoute).flatMap((route) => expandRoute(route.path))
 const navPaths = navDomains.flatMap((domain) => [domain.root, ...domain.pages.map((page) => page.path)])
 
 /** 页面里写死的站内跳转目标（`push('/x')` / `to="/x"`；模板字符串取静态前缀）。 */
@@ -135,7 +145,7 @@ describe('导航树完整性（路由表 ⇄ 树）', () => {
 describe('底部 tab 与「模型设置」的常驻可达（2026-10-15 事故的守卫）', () => {
   it('底部恰好五个域，每个域都有根页与图标', () => {
     expect(navTabs).toHaveLength(5)
-    expect(navTabs.map((tab) => tab.to)).toEqual(['/today', '/log', '/trend', '/me', '/settings'])
+    expect(navTabs.map((tab) => tab.to)).toEqual(['/today', '/log/diet', '/trend', '/me', '/settings'])
     for (const tab of navTabs) expect(tab.icon).not.toBe('')
   })
 

@@ -1,8 +1,11 @@
 <script setup lang="ts">
 /**
- * 「记录」域的根页（M1 / M2 / M3），域内三块面板共用它：饮食 / 训练 / 身体。
+ * 「记录」域的外壳（M1 / M2 / M3），域内三块面板共用它：饮食 / 训练 / 身体。
  * **日期由这里统一持有**，页面之间切换不会丢掉选中的日期；三个面板只从 store 读数据，
  * 各自不再管路由与加载。
+ *
+ * 域根是**饮食面板** `/log/diet`（旧地址 `/log` 在路由表里转过来）：这个壳本身不是「记录首页」，
+ * 它就是当前那块面板，所以页头标题取面板名（饮食 / 训练 / 身体），与导航条里高亮的那颗同名。
  *
  * 同级切换（含「一句话记录」「食物库」）交给页头那条由 `app/nav.ts` 渲染的域导航条 ——
  * 这里原本自带一套 `van-tabs` + 「一句话 / 拍照」按钮，等于每个域各写一份导航，改一处就得翻五个文件。
@@ -23,10 +26,11 @@ import { todayIso } from '@/app/date'
 
 type LogKind = 'diet' | 'workout' | 'body'
 
-const KINDS: { name: LogKind; hint: string }[] = [
-  { name: 'diet', hint: '选食物 → 填份量 → 确认；换算与热量全部本地计算。' },
-  { name: 'workout', hint: '容量负荷与有氧消耗本地计算，不让模型算数。' },
-  { name: 'body', hint: '晨起空腹称重最稳定；没称就留空，不用昨天的值补。' }
+/** `label` 既是页头标题，也是导航条（`app/nav.ts`）里这一颗格子的文案，两处必须同名。 */
+const KINDS: { name: LogKind; label: string; hint: string }[] = [
+  { name: 'diet', label: '饮食', hint: '选食物 → 填份量 → 确认；换算与热量全部本地计算。' },
+  { name: 'workout', label: '训练', hint: '容量负荷与有氧消耗本地计算，不让模型算数。' },
+  { name: 'body', label: '身体', hint: '晨起空腹称重最稳定；没称就留空，不用昨天的值补。' }
 ]
 
 const route = useRoute()
@@ -46,7 +50,7 @@ onMounted(() => {
 
 <template>
   <section class="page">
-    <AppHeader title="记录" :subtitle="current.hint" />
+    <AppHeader :title="current.label" :subtitle="current.hint" />
 
     <DateNav :date="store.date" @update:date="store.load" />
 

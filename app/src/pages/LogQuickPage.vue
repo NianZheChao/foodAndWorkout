@@ -332,11 +332,6 @@ async function adopt(next: DraftKind): Promise<void> {
 </template>
 
 <style scoped>
-.card-warn {
-  border-color: var(--warn);
-  background: #fffaf3;
-}
-
 .actions {
   display: flex;
   flex-direction: column;
@@ -388,7 +383,7 @@ async function adopt(next: DraftKind): Promise<void> {
   border-radius: 50%;
   border: none;
   background: var(--danger);
-  color: #fff;
+  color: var(--on-danger);
   line-height: 1;
 }
 

@@ -148,14 +148,20 @@ describe('底部 tab：五个域（今日 / 记录 / 分析 / 我的 / 设置）
   })
 
   it('点一个已经高亮的 tab 也要跳转，不能是死键', async () => {
-    // /log/workout 时「记录」是高亮的，点它应回到域根（/log），而不是毫无反应
+    // /log/workout 时「记录」是高亮的，点它应回到域根（饮食面板 /log/diet），而不是毫无反应
     const { wrapper, router } = await mountApp('/log/workout')
     expect(activeIndex(wrapper)).toBe(1)
 
     await tabItems(wrapper)[1].trigger('click')
     await flushPromises()
 
-    expect(router.currentRoute.value.path).toBe('/log')
+    expect(router.currentRoute.value.path).toBe('/log/diet')
+  })
+
+  it('旧的 /log 地址转到域根：不会因为改地址把老链接作废', async () => {
+    const { wrapper, router } = await mountApp('/log')
+    expect(router.currentRoute.value.path).toBe('/log/diet')
+    expect(wrapper.find('.page-title').text()).toBe('饮食')
   })
 
   it('从 /summary 点「今日」也能回首页', async () => {
@@ -168,9 +174,9 @@ describe('底部 tab：五个域（今日 / 记录 / 分析 / 我的 / 设置）
 
 describe('页头域导航条（同级页面都在这一行）', () => {
   it('「记录」域列出五个入口，当前面板高亮，点了真的换面板', async () => {
+    // 域根就是饮食面板：不再有「记录」「饮食」两颗指向同一页的格子（2026-10-16）
     const { wrapper, router } = await mountApp('/log/diet')
     expect(wrapper.findAll('.domain-nav .nav-chip').map((item) => item.text())).toEqual([
-      '记录',
       '饮食',
       '训练',
       '身体',
@@ -183,7 +189,7 @@ describe('页头域导航条（同级页面都在这一行）', () => {
     await flushPromises()
 
     expect(router.currentRoute.value.path).toBe('/log/workout')
-    expect(wrapper.find('.page-title').text()).toBe('记录')
+    expect(wrapper.find('.page-title').text()).toBe('训练')
     expect(onChips(wrapper)).toEqual(['训练'])
   })
 

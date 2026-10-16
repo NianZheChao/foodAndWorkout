@@ -4,15 +4,16 @@
  *
  * 生成分两步走，界面上也说清楚：**数值区本地算、立即落库**，文字区等模型。
  * 没配模型也能先生成一份只有数值的报告（§9.3），配好模型再重新生成文字。
- * 「重新生成」永远新建一条记录，旧版本留在列表里（FR-710）。
+ * 「重新生成」永远新建一条记录，旧版本留在列表里（FR-710）；列表里也能**删掉**不要的那些
+ * —— 报告是本地产出的视图，删它不动任何原始记录，所以只做二次确认，不需要引用保护。
  */
 
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { showToast } from 'vant'
+import { showDialog, showToast } from 'vant'
 import AppHeader from '@/components/AppHeader.vue'
 import { generateReport } from '@/application/report'
-import { listReports } from '@/data/repositories/reports'
+import { listReports, removeReport } from '@/data/repositories/reports'
 import { fmtNumber, fmtPercent } from '@/domain/format'
 import { coverageWarning, periodOf } from '@/domain/reportDigest'
 import { todayIso } from '@/app/date'
@@ -59,6 +60,26 @@ function statusLabel(row: ReportRecord): string {
   if (row.status === 'ready') return row.editedByUser ? '已人工编辑' : '文字已生成'
   if (row.status === 'pending') return '待生成文字'
   return '草稿'
+}
+
+/** 类型标签：周报 / 月报，删除确认框里也要用，提出来一处写。 */
+function typeLabel(row: ReportRecord): string {
+  return row.type === 'weekly' ? '周报' : '月报'
+}
+
+/** 删掉一份报告：只删这份视图，原始记录一条都不动，所以问一句就能删。 */
+async function remove(row: ReportRecord): Promise<void> {
+  try {
+    await showDialog({
+      title: `删除${typeLabel(row)}「${row.label}」`,
+      message: '报告是本机算出来的一份视图，删掉不影响任何原始记录（饮食 / 训练 / 体重都还在）。需要时重新生成即可。'
+    })
+  } catch {
+    return
+  }
+  await removeReport(row.id)
+  await load()
+  showToast({ message: '已删除', position: 'bottom' })
 }
 
 async function regenerate(row: ReportRecord): Promise<void> {
@@ -108,7 +129,7 @@ async function regenerate(row: ReportRecord): Promise<void> {
           <div>
             <div class="report-label">
               {{ row.label }}
-              <span class="tag">{{ row.type === 'weekly' ? '周报' : '月报' }}</span>
+              <span class="tag">{{ typeLabel(row) }}</span>
               <span class="tag">{{ statusLabel(row) }}</span>
             </div>
             <div class="report-meta">
@@ -132,6 +153,7 @@ async function regenerate(row: ReportRecord): Promise<void> {
           <van-button size="small" plain :loading="busy === row.type" @click="regenerate(row)">
             重新生成
           </van-button>
+          <van-button size="small" plain @click="remove(row)">删除</van-button>
         </div>
       </div>
     </div>

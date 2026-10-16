@@ -6,7 +6,7 @@
 - 最后更新：2026-10-16
 - 应用版本：`0.1.0`（`app/package.json`）
 - 分支 / 最近提交：`main` / `feat: 界面与菜单重构（T4.7）：导航树 `app/nav.ts` + 五个域 + 「我的」页`
-- 质量基线（2026-10-16 重构后实测）：`npm test` 60 文件 / 553 项（`npm run build` 随之通过）；全量并行跑**已不再有偶发失败**（两条老竞态已按 §8 修掉，真跑 Python 的那条也给了 30 秒超时）；`workspace-script.spec.ts` 没装 Python 时整组跳过；`npm run build`（含 `vue-tsc -b` 类型检查，**测试文件也在类型检查范围内**）通过
+- 质量基线（2026-10-16 重构后实测）：`npm test` 61 文件 / 560 项（`npm run build` 随之通过）；全量并行跑**已不再有偶发失败**（两条老竞态已按 §8 修掉，真跑 Python 的那条也给了 30 秒超时）；`workspace-script.spec.ts` 没装 Python 时整组跳过；`npm run build`（含 `vue-tsc -b` 类型检查，**测试文件也在类型检查范围内**）通过
 
 ## 0. 三十秒速览
 
@@ -22,13 +22,13 @@
 每天拿一份带依据的 AI 指导 → 用近 4 周的记录做一次校准 → 生成周报 / 月报」这条链路已经完整**；
 推荐周计划已决定不做（B 级生成式推荐默认关、未做）；数据能导出成 JSON 包、也能导回来，
 还能导出成原工作区那一套文本（`records/` + `foods.csv` + `profile.md` + `targets.md`，
-仓库脚本可直接消费），手滑毁数据有快照可回滚，食物库能自己治理（来源筛选 / 疑似重复 / 停用），
+仓库脚本可直接消费），手滑毁数据有快照可回滚，食物库能自己治理（来源筛选 / 停用 / 改数值），
 提醒也能用了（今日页的「今天还没记的」清单 + 应用打开时的本地通知），设置页把提醒的限制写清楚了，
 单位 / 周起始日 / 外观 / 「不再追问」名单都能自己调，免责声明在 `/about`、诊断信息与离线队列在 `/data`，
 食物库里模型给的数值也能用包装标签直接覆盖掉（FR-406），阶段 4 到此**全部收口、无欠账**；
 整份计划的最后一件 T3.8（B 级生成式推荐，默认关）也在 §2.19（安全边界）与 §2.20（两个任务 + `/plan` 页）
 落地了 —— **阶段 0 到阶段 4 全部完成，没有欠账**；计划收口后又补了两件「怎么用起来」的事：
-token 预算告警（T2.5，见 §2.21）与**分发**（`npm run deploy` 发到 GitHub Pages，见 §2.22）；随后又做了一轮**界面与菜单重构**（T4.7，见 §2.23）—— 底部 tab 由「今日 / 记录 / 趋势 / 报告 / 设置」变成五个域「今日 / 记录 / 分析 / 我的 / 设置」，每个页面都有统一的树状路径。B 级推荐按 FR-1003 保持默认关，要到
+token 预算告警（T2.5，见 §2.21）与**分发**（`npm run deploy` 发到 GitHub Pages，见 §2.22）；随后又做了一轮**界面与菜单重构**（T4.7，见 §2.23）—— 底部 tab 由「今日 / 记录 / 趋势 / 报告 / 设置」变成五个域「今日 / 记录 / 分析 / 我的 / 设置」，每个页面都有统一的树状路径；重构之后又按使用者反馈修了一轮（T4.8，见 §2.24）：**深色模式里写死颜色的地方全部改成 token**（并加了静态守卫）、「记录」域根改成饮食面板（页头不再并排出现「记录」「饮食」两颗指向同一页的格子）、下线「疑似重复」卡片、周报月报可删。B 级推荐按 FR-1003 保持默认关，要到
 「设置 → 生成式推荐」显式打开、且档案里四项约束填齐之后才会出现「今天练什么 / 今天吃什么」。
 
 ## 1. 文档地图
@@ -715,6 +715,58 @@ T4.4 留下的那笔欠账：模型给的六项数值是**估算**，手里有�
   每条路由只归一个域、写死的跳转都指向存在的路由）；`tests/pages.spec.ts` 换成「每个页面都落在某个域
   + 页头导航条 + 面包屑」的矩阵（21 条路由）；新增 `tests/me-page.spec.ts`；今日页 / 设置页的用例跟着搬。
   口径写在设计文档 §8.1 / §8.5 / §12 / §13（T4.7）。
+
+### 2.24 T4.8 落地：暗色缺陷统一修复 + 导航去重 + 卡片下线 + 报告可删（2026-10-16）
+
+重构上线后使用者回了一批具体问题，四条一起处理：
+
+**① 深色模式里写死的颜色（主症状）**。反馈是三个具体位置颜色不对：「今日 → 推荐清单」的
+「推荐现在是关着的」提醒卡片、「记录 → 食物库」的「疑似重复」卡片，外加「其他地方也有类似问题」。
+查下来是同一类病：**颜色写在页面里，而不是 token 里** ——
+
+- `.card-warn` 的底色写死 `#fffaf3`（近白），深色下就成了「浅黄底 + 浅灰字」；
+- 三个页面（报告详情 / 今日指导 / 校准向导）各抄一份 `.flagged { background: #fff3cd }`，同样问题；
+- `LogQuickPage.vue` 的删除按钮写死 `color: #fff`，而深色下 `--danger` 是浅红（白字直接糊掉）。
+
+修法是把这类「柔和底色」也做成 token：新增 `--warn-soft` / `--flag-soft` / `--on-danger`，两套主题各自给值；
+`.card-warn` 与 `.flagged` 提到 `src/style.css` 当全局基元（三个页面各抄一份的 scoped 块删掉）；
+`TargetsPage.vue` 的 `.card-confirm` 跟着换。**图表是另一路**：ECharts 把颜色画进 SVG、读不到 CSS 变量，
+所以新增 `app/chartTheme.ts` 按外观给两套取值（连 tooltip 底色一起 —— ECharts 的 tooltip 默认写死白底，
+深色下点一下图就闪一块白），页面用 `app/theme.ts` 新增的 `useResolvedTheme()` 跟着 `data-theme` 重画，
+坐标轴标签 / 图例 / 分割线 / 目标虚线的文字颜色也都补上了（以前轴标签是默认深灰，深色下看不清）。
+
+**并且加了两条守卫**（`tests/theme-tokens.spec.ts`）：① `chartTheme.ts` 的取值逐项比对回
+`style.css` 的同名 token；② **静态扫描 `src/` 里所有 `.vue` / `.css` / `.ts`，出现颜色字面量就失败**
+（只放行 `style.css` 的 token 定义行）—— 这类缺陷以后在测试里就拦住，不用等人肉在深色下翻页面。
+
+**② 「记录」tab 顶部的「记录」和「饮食」是同一个页面**。根因在导航树：记录域的域根是 `/log`，
+而 `/log` 渲染的就是饮食面板（`kind` 缺省 `diet`），于是页头并排出现「记录」「饮食」两颗格子，
+点哪颗都到同一个地方。改法是把**域根直接定成 `/log/diet`**（`/log` 在路由表里转过去，旧书签不失效），
+`NavDomain` 加 `rootLabel`（记录域的根格子写「饮食」），页头标题取当前面板名（饮食 / 训练 / 身体）——
+标题与高亮的那颗格子从此永远同名，和「今日 / 我的 / 设置」几个域一致。
+
+**③ 「疑似重复」卡片下线**。同意使用者的判断，理由是它**给不出可执行的结论**：真实 114 条种子库里
+只有 5 组，其中 4 组「本来就该共存」（`牛奶(全脂)` / `牛奶(脱脂)`、`肥牛卷(生)` / `肥牛卷(生 偏肥)`、
+`豆腐(北)` / `豆腐(南)`、两瓶啤酒），唯一「数值完全相同」的 `鸡蛋(全蛋 生)` / `鸡蛋(水煮)` 还是种子库
+有意留的（备注写着「等同生蛋 便于直接记录」）。照它的建议「留一条、停用其余」，删掉的恰好是用户真正要的
+那条。FR-408 的另一半 —— **新增前提示合并** —— 保留且早就在（`application/foodLibrary.ts` /
+`foodResolve.ts`，用例 `tests/food-resolve.spec.ts`），那才是"避免库膨胀"该拦的时刻。
+`domain/foodAudit.ts` 与 `foodName.looseFoodKey` 随之删除，只有 `sameFacts` 挪进了 `domain/nutrition.ts`
+（改数值时判断「其实没改」还在用它）。
+
+**④ 周报 / 月报生成后可删**。`data/repositories/reports.ts` 加 `removeReport`；列表页每行与详情页底部
+各一个「删除」入口，都走 `showDialog` 二次确认，文案明说「报告是本机算出来的一份视图，删掉不影响任何
+原始记录」。删除不动 `FR-710` 的「重新生成会新建一版、旧版本留在列表里」，只是给用户一个收拾旧版本的出口。
+
+**验收**：`tests/theme-tokens.spec.ts`（新增，4 项：token ⇄ 图表两套取值 / 两套取值互不相同 /
+全库无颜色字面量）、`tests/theme.spec.ts`（+2：`currentTheme` / `watchResolvedTheme` / `useResolvedTheme`
+的观察与断开）、`tests/trend-page.spec.ts`（+1：切到深色时图表取值真的换了一套）、
+`tests/pages.spec.ts`（+1：旧地址 `/log` 转到域根；记录域的格子与标题断言改掉）、
+`tests/report-pages.spec.ts`（+2：列表删除 → 库里没有且原始记录还在；详情删除 → 回列表）、
+`tests/navigation-reachability.spec.ts`（改成会展开非可选枚举、并跳过纯跳转路由）、
+`tests/food-admin.spec.ts` / `tests/foods-page.spec.ts`（删掉「疑似重复」相关的用例，概况断言保留）。
+口径写在设计文档 §4.2 / §8.1 / §8.5 / §12 / §13（T4.8）。
+
 ## 3. 部分完成：有明确缺口（优先补这些）
 
 | 编号 | 已实现 | 缺什么 | 建议落点 |
@@ -775,10 +827,10 @@ T3.8（B 级生成式推荐，两步）全部完成，见 §2.7 - §2.11 与 §2
 ```
 app/
   src/
-    app/          启动流程（bootstrap：开库 + 写种子）、日期工具、设置、外观（theme）、图片压缩、
+    app/          启动流程（bootstrap：开库 + 写种子）、日期工具、设置、外观（theme + chartTheme：图表的两套配色）、图片压缩、
                   budget（预算告警的确认弹窗，§2.21）、nav（导航树：域 → 页面，§2.23）
     domain/       纯计算与领域类型 —— 无 IO、不依赖 Vue / Dexie（对拍测试直接打这里）；
-                  foodName / foodAudit 是食物库的名称归一化与疑似重复判定；foodEdit / nutrientRange 是手改数值的
+                  foodName 是食物库的名称归一化与括号语义；foodEdit / nutrientRange 是手改数值的
                   解析与合理区间（区间与模型校验共用）；reminders 是提醒的判定、默认时间段与补记入口；
                   recommend 是 B 级推荐的安全边界（四项约束齐没齐、怎么拆、怎么拼成输入行）；
                   plan 是推荐的本地加工（FR-806 按库复算 / 器材白名单 / 加重与时长提示 / 缺口对照），
@@ -815,7 +867,7 @@ app/
 | 模型返回的脏文本 | `llm/text.ts` `parseJsonFromModel` / `estimateTokens` |
 | 任务契约（新增任务时） | `llm/types.ts` `LlmTask`，再注册进 `llm/index.ts` 的 `TASKS` |
 | 食物库查找与模糊匹配 | `application/foodLibrary.ts` `findFoodFuzzy` / `suggestKnownFoods` |
-| 食物库治理（`/foods`） | `application/foodAdmin.ts` `buildFoodOverview` / `setDisabled` / `deleteFood` / `editFoodFacts`；分组在 `domain/foodAudit.ts`，页面是 `pages/FoodsPage.vue` |
+| 食物库治理（`/foods`） | `application/foodAdmin.ts` `buildFoodOverview` / `setDisabled` / `deleteFood` / `editFoodFacts`；页面是 `pages/FoodsPage.vue`（「疑似重复」卡片 2026-10-16 下线，见 §2.24） |
 | 手改食物数值（FR-406） | `domain/foodEdit.ts` `draftOfFood` / `reviewFactsEdit` / `applyFacts`；用例是 `application/foodAdmin.ts` 的 `editFoodFacts`，落库走 `data/repositories/foods.ts` 的 `saveFood` |
 | 六项数值的合理区间 | `domain/nutrientRange.ts` `NUTRIENT_RANGES` / `rangeChecks`（模型校验与用户手改共用同一份） |
 | B 级推荐的安全边界（T3.8） | `domain/recommend.ts` `missingRecommendConstraints` / `recommendConstraintsReady` / `isRecommendEnabled` / `parseConstraintList` / `recommendConstraintLines`；档案字段在 `pages/ProfilePage.vue`，开关在 `pages/SettingsPage.vue` |
@@ -852,11 +904,14 @@ app/
 | 本地通知与权限 | `application/notify.ts` `notificationSupport` / `requestNotificationPermission` / `runReminderTick` / `startReminderLoop` |
 | 设置页与提醒入口 | `pages/SettingsPage.vue`（`/settings`，T4.5 + T4.6 的偏好 / 名单）；今日页顶部的提醒卡片在 `pages/TodayPage.vue` |
 | 外观（浅色 / 深色 / 跟随系统，T4.6） | `app/theme.ts` `resolveTheme` / `applyTheme` / `applyThemeFromSettings` / `startThemeSync`；深色 token 在 `src/style.css` 的 `:root[data-theme='dark']` |
+| 图表跟着外观换色（T4.8） | `app/chartTheme.ts` `CHART_PALETTES` / `chartPalette`（ECharts 读不到 CSS 变量，两套取值与 token 对齐）；`app/theme.ts` `useResolvedTheme` / `currentTheme` / `watchResolvedTheme` |
+| 颜色只写 token（T4.8） | 颜色定义只在 `src/style.css` 的两套 token 里（含 `--warn-soft` / `--flag-soft` / `--on-danger`）；`tests/theme-tokens.spec.ts` 静态扫描拦住页面里的颜色字面量 |
+| 删掉一份报告（T4.8） | `data/repositories/reports.ts` `removeReport`；入口在 `pages/ReportsPage.vue`（每行）与 `pages/ReportDetailPage.vue`（底部） |
 | 诊断信息导出（T4.6） | `io/diagnostics.ts` `buildDiagnostics` / `serializeDiagnostics` / `diagnosticsFileName` |
 | 离线队列界面（T4.6） | `data/repositories/pendingOps.ts` `listOps` / `removeOp`；界面在 `pages/DataPage.vue` |
 | 免责声明与版本（T4.6） | `pages/AboutPage.vue`（`/about`），路由注册在 `app/src/router/index.ts` |
 | 路由表 | `app/src/router/index.ts`（权威表格在 `docs/pwa-design.md` §8.1） |
-| 导航树（域 → 页面，T4.7） | `app/src/app/nav.ts` `navDomains` / `navTabs` / `domainOf` / `navLocation` —— **新增页面先登记这里**，否则 `navigation-reachability.spec.ts` 会拦下来 |
+| 导航树（域 → 页面，T4.7） | `app/src/app/nav.ts` `navDomains` / `navTabs` / `domainOf` / `navLocation` —— **新增页面先登记这里**，否则 `navigation-reachability.spec.ts` 会拦下来（域根那颗格子的文案用 `rootLabel` 单给，记录域是「饮食」） |
 | 页头的域导航条与面包屑 | `components/AppHeader.vue`（按 `navLocation` 自动渲染，页面不写入口）；样式基元在 `src/style.css` |
 | 底部 tab 匹配规则 | `app/src/App.vue`（`tabs = navTabs`，高亮走 `domainOf(route.path)`） |
 
@@ -867,7 +922,7 @@ app/
 ```bash
 npm install
 npm run dev       # 本地开发服务器
-npm test          # 单元 / 对拍 / 组件测试（60 文件 / 553 项）
+npm test          # 单元 / 对拍 / 组件测试（61 文件 / 560 项）
 npm run build     # vue-tsc 类型检查 + 生产构建（产物 dist/）
 npm run preview   # 预览构建产物 —— 测 PWA 行为请用这个，不要用 dev
 npm run deploy    # 构建（GitHub Pages 的 base）+ 推到部署仓库（§2.22；--dry-run 可先看）
@@ -1011,6 +1066,14 @@ npm run build
 - **页头是全页面共用的**：`components/AppHeader.vue` 的根节点是 `.page-header`（它里面才是 `.page-head`），
   域导航条与面包屑都在这里按 `app/src/app/nav.ts` 渲染。改它等于改所有页面的页头；想给某个页面加
   「更多入口」之前，先想想是不是该登记进导航树（否则下一个人还得再摸一遍入口在哪 —— 这正是重构的起因）。
+- **页面里写死的颜色在深色下必然出问题**（2026-10-16 一次修了四处）：`.card-warn` 的 `#fffaf3`、
+  三份 `#fff3cd`、删除按钮上的 `#fff`，症状统一是「浅色底 + 浅灰字」或者白字糊在浅红上。
+  规矩是**颜色只写 token**（新的柔和底色见 `--warn-soft` / `--flag-soft` / `--on-danger`），
+  `tests/theme-tokens.spec.ts` 会静态扫一遍 `src/`；改样式时别再就地写十六进制。
+- **ECharts 拿不到 CSS 变量，连 tooltip 的底色都是它自己写死的白**：图表配色一律走
+  `app/chartTheme.ts` 的两套取值（与 token 对齐，同一个测试守着），页面用
+  `app/theme.ts` 的 `useResolvedTheme()` 跟着 `data-theme` 重画；只给 series 上色、
+  不管 tooltip / 轴标签，深色下照样会露出白底与看不清的深灰字。
 
 ## 9. 建议的推进顺序
 
@@ -1048,7 +1111,7 @@ npm run build
 
 ## 10. 交接自检清单
 
-- [ ] `cd app && npm install && npm test`（60 文件 / 553 项；`workspace-script.spec.ts` 那条真跑 Python 的用例要给足超时，见 §8）
+- [ ] `cd app && npm install && npm test`（61 文件 / 560 项；`workspace-script.spec.ts` 那条真跑 Python 的用例要给足超时，见 §8）
 - [ ] `npm run build` 通过
 - [ ] `npm run preview` 能打开今日页，底部 tab 来回切换不卡死
 - [ ] 任一页面的页头都有一条域导航条（本域全部页面 + 当前页高亮）；报告详情顶上还有 `分析 › 报告 › 报告详情` 的面包屑

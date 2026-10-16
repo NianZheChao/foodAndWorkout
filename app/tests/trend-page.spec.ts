@@ -11,8 +11,11 @@ import { mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 import TrendPage from '@/pages/TrendPage.vue'
+import EchartView from '@/components/EchartView.vue'
 import { routes } from '@/router'
 import { db } from '@/data/db'
+import { applyTheme } from '@/app/theme'
+import { CHART_PALETTES } from '@/app/chartTheme'
 import { addDays, todayIso } from '@/app/date'
 import { ensureDay, updateDay } from '@/data/repositories/days'
 import { addIntake } from '@/data/repositories/intake'
@@ -66,6 +69,8 @@ async function seedDays(): Promise<void> {
 beforeEach(async () => {
   await db.open()
   await Promise.all(db.tables.map((table) => table.clear()))
+  // 图表按 `data-theme` 取色（`app/chartTheme.ts`）：每条用例都从浅色开始，避免互相影响
+  applyTheme('light')
   await putTargets({
     tdeeKcal: 2633,
     kcalTarget: 2100,
@@ -148,6 +153,24 @@ describe('趋势页', () => {
     await seedDays()
     const { wrapper } = await mountTrend(7)
     expect(wrapper.text()).toContain('还没有目标值')
+  })
+
+  it('图表配色跟着 data-theme 走（ECharts 读不到 CSS 变量，只能按外观换一套）', async () => {
+    await seedDays()
+    const { wrapper } = await mountTrend(7)
+    const optionText = (): string => JSON.stringify(wrapper.findComponent(EchartView).props('option'))
+
+    expect(optionText()).toContain(CHART_PALETTES.light.series1)
+    expect(optionText()).toContain(CHART_PALETTES.light.text)
+
+    applyTheme('dark')
+    await vi.waitFor(() => {
+      expect(optionText()).toContain(CHART_PALETTES.dark.series1)
+    })
+    // 浅色那套整体换掉，不是只加了几笔
+    expect(optionText()).not.toContain(CHART_PALETTES.light.series1)
+    expect(optionText()).toContain(CHART_PALETTES.dark.splitLine)
+    expect(optionText()).toContain(CHART_PALETTES.dark.tooltipBg)
   })
 
   it('TDEE 样本不足时给出提示，而不是编一个数（DR-27）', async () => {

@@ -203,14 +203,14 @@ interface DayRecord {
 }
 ```
 
-**实现补充（2026-10-16，T4.4 已实现）**：食物库治理落点 `domain/foodAudit.ts`（本地判定）+
+**实现补充（2026-10-16，T4.4 已实现；同日下线「疑似重复」卡片）**：食物库治理落点
 `application/foodAdmin.ts`（用例：概况 / 停用 / 删除保护）+ `pages/FoodsPage.vue`（`/foods`）。
 下面几条是把 FR-408 / FR-411 / FR-412 落成代码时定的。
 
 | 点 | 口径 | 为什么 |
 | --- | --- | --- |
-| 「疑似重复」怎么判定 | 按**去掉括号后的主名**归一化分组（`looseFoodKey`），≥2 条成一组；组里再标出六项数值是否完全一致 | 括号里的限定语很可能正是区别（`牛奶(全脂 市售)` vs `牛奶(脱脂 市售)`），分组用宽松键、判断用严格比较 |
-| 会不会自动合并 | **不会**。只提醒 + 让用户停用其中一条 | 自动挑一条留下就是静默改数值；近似重复合并属需求 §12 的 P2 |
+| FR-408 落在哪 | **只在新增那一刻**：写记录 / 入库时先按名称给出已有候选、提示「合并到它」而不是新加一条（`application/foodLibrary.ts` / `foodResolve.ts`，用例 `tests/food-resolve.spec.ts`） | 要拦的是「同一样东西被记了两遍」，那件事恰好发生在新增时；事后再从名字猜哪两条该合并，信息已经丢了一半 |
+| 为什么下线「疑似重复」清单 | 2026-10-16 下线。静态分组按去括号主名成组（`looseFoodKey`），真实的 114 条种子里只有 5 组，其中 4 组是**设计上就该共存**的（`牛奶(全脂 市售)` / `牛奶(脱脂 市售)`、`肥牛卷(生)` / `肥牛卷(生 偏肥)`、`豆腐(北 老豆腐)` / `豆腐(南 嫩豆腐)`、两瓶啤酒），唯一「数值完全相同」的还是种子库有意留的那对 `鸡蛋(全蛋 生)` / `鸡蛋(水煮)`（备注写着「等同生蛋 便于直接记录」）——照它的建议「留一条、停用其余」会删掉用户真正要的那条 | 一个只说「可能是重复」却指不出该动哪条的清单，等于把判断推回给用户，还额外制造了误删的入口 |
 | 名称工具的位置 | `baseNameOf` / `parenOf` 从 `application/foodLibrary.ts` 挪进 `domain/foodName.ts` | 纯字符串运算：治理页要用，但它们不属于「查库」 |
 | 停用（`disabledFlag`）的语义 | 只让条目**不再出现在检索与新增候选里**（`listFoods` / `searchFoods` 过滤），数值与历史一字不动 | 摄入条目存的是 `foodSnapshot` 快照（DR-02），删/停都不该让历史记录变形 |
 | 删除保护在哪一层 | 业务规则在 `application/foodAdmin.ts`（`deleteFood` 再查一次引用数），界面把按钮禁掉只是顺手 | 界面禁用绕得过去；「被引用的条目不可删除」是要能被单测钉住的规则 |
@@ -1024,7 +1024,7 @@ interface LlmTask<In, Out> {
 | 域（tab） | 域根 | 域内页面 |
 | --- | --- | --- |
 | 今日 | `/today` | 当日汇总 `/summary` · 今日指导 `/coach` · 推荐清单 `/plan` |
-| 记录 | `/log` | 饮食 `/log/diet` · 训练 `/log/workout` · 身体 `/log/body` · 一句话记录 `/log/quick` · 食物库 `/foods` |
+| 记录 | `/log/diet`（饮食面板） | 训练 `/log/workout` · 身体 `/log/body` · 一句话记录 `/log/quick` · 食物库 `/foods` |
 | 分析 | `/trend` | 报告 `/reports`（详情 `/reports/:id`）· 目标与校准 `/targets` · 校准向导 `/calibration` |
 | 我的 | `/me` | 档案 `/profile` · 数据 `/data` · 关于与免责声明 `/about` |
 | 设置 | `/settings` | 模型与 AI `/settings/model` |
@@ -1039,7 +1039,9 @@ interface LlmTask<In, Out> {
 **页头 = 统一的树状路径**（都由 `AppHeader.vue` 自动渲染，页面不写入口）：
 
 1. **域导航条**（`.domain-nav`）：本域全部页面（含域根）的格子，当前页高亮。域根页上它是「本域目录」，
-   二级页上它是「同层还有谁」。
+   二级页上它是「同层还有谁」。域根那颗格子默认写域的名字，**例外是「记录」域：它写「饮食」**
+   （`NavDomain.rootLabel`）—— 因为记录域的根页就是饮食面板，写「记录」会和旁边的「饮食」指同一页，
+   等于两个名字一件事。
 2. **面包屑**（`.crumbs`）：只在层级 ≥ 3 时出现（`分析 › 报告 › 报告详情`），两级页面不重复画 ——
    高亮的那颗格子已经说明位置。
 
@@ -1048,14 +1050,15 @@ interface LlmTask<In, Out> {
 | 路由 | 页面 | 备注 |
 | --- | --- | --- |
 | `/today` | 今日（默认页，今日域根） | 进度环、缺口提示、快捷录入；「当日汇总 / 今日指导 / 推荐清单」由域导航条给，页面上不再挂「更多」卡片 |
-| `/log/:kind?` | 记录（记录域根，饮食 / 训练 / 身体） | `kind` ∈ `diet\|workout\|body`，缺省 `diet`；**同级切换即页头的域导航条**（`/log/diet` `/log/workout` `/log/body` `/log/quick` `/foods`），**日期由这一层统一持有**，切换不丢日期 |
+| `/log/diet` | 饮食（记录域根） | 域根就是**饮食面板**（2026-10-16 起；旧地址 `/log` 在路由表里转过来）。三块面板（饮食 / 训练 / 身体）共用一个壳 `LogHubPage`，**日期由这一层统一持有**，切换不丢日期；**同级切换即页头的域导航条**（`/log/diet` `/log/workout` `/log/body` `/log/quick` `/foods`），页头标题取当前面板名 |
+| `/log/:kind(diet\|workout\|body)` | 记录壳（训练 / 身体） | 与域根同一个壳，`kind` 必填；以前 `/log` 与 `/log/diet` 是两条路由渲染同一个面板，页头会并排出现「记录」「饮食」两颗指向同一页的格子 |
 | `/log/quick` | 一句话 / 拍照记录 | 文本或图片 → 解析草稿 → 逐项确认（FR-110 / FR-111 / FR-113） |
 | `/summary/:date?` | 当日汇总 | 不完整时置顶提示 |
 | `/trend` | 趋势（分析域根） | `?days=7\|14\|28` |
 | `/coach` | 今日指导（A 级） | 摘要 v2 + 当日缺口 → 带依据的建议；含「将要发送的内容」预览与采纳/不采纳（§6.4.2 / FR-1602） |
 | `/plan` | 推荐清单（B 级） | 「今天练什么」+「今天还能吃什么」；默认关，开关开了且四项约束齐了才给生成（FR-1003）；数值一律按本地库复算（§6.5 / §6.6 / T3.8） |
-| `/reports` / `/reports/:id` | 报告列表 / 详情 | 待生成报告置顶；详情是唯一的**三级**页面（面包屑 `分析 › 报告 › 报告详情`） |
-| `/foods` | 食物库 | 条目概况、按名称 / 来源（内置 / 模型 / 手工）/ 分类筛选、疑似重复分组提醒（T4.4）；停用与删除（被记录引用过的删不掉，只能停用） |
+| `/reports` / `/reports/:id` | 报告列表 / 详情 | 待生成报告置顶；列表与详情都能删（报告是本地产出的视图，删它不动原始记录，只做二次确认）；详情是唯一的**三级**页面（面包屑 `分析 › 报告 › 报告详情`） |
+| `/foods` | 食物库 | 条目概况、按名称 / 来源（内置 / 模型 / 手工）/ 分类筛选；停用与删除（被记录引用过的删不掉，只能停用）；改数值（FR-406）。「疑似重复」分组卡片 2026-10-16 下线，FR-408 只剩新增时的合并提示（见 §4.2） |
 | `/targets` | 目标 | 校准记录表 |
 | `/calibration` | 校准向导 | 本地数字 + AI 复核；幅度 / 频率 / 样本门禁，采纳才写目标（§6.7 / T3.5） |
 | `/me` | 我的（我的域根） | 档案与目标的现状 + 本机数据（schema / 食物库条目 / 种子版本 / 待办队列）；「档案 / 数据 / 关于」由域导航条给 |
@@ -1168,6 +1171,13 @@ Pinia 只放**会话态与派生态**：
   `--van-background` / `--van-text-color` / `--van-cell-background` 等映射过来；`data-theme` 由
   `app/src/app/theme.ts` 按设置写到 `<html>`，同时给根节点加 / 去 `van-theme-dark`
   （Vant 的深色变量挂在这个类上，挂在根节点才能连 teleport 到 `body` 的弹窗一起照顾到）。
+- **颜色只写 token**（2026-10-16 补）：`--warn-soft`（提醒卡片底）/ `--flag-soft`（「待核对」数字的高亮底）/
+  `--on-danger`（危险色底上的文字）这类「柔和底色」也进 token，两套主题各自给值 —— 以前这几处直接写死
+  浅色值（`#fffaf3` / `#fff3cd` / `#fff`），深色下就成了「浅黄底 + 浅灰字」，读不清。页面里**一律不许出现
+  颜色字面量**，由 `tests/theme-tokens.spec.ts` 静态扫描守住（只放行 `style.css` 的 token 定义行）。
+- **图表读不到 CSS 变量**（2026-10-16 补）：ECharts 把颜色画进 SVG，所以在 `app/src/app/chartTheme.ts` 里
+  按外观给了两套取值（连 tooltip 的底色也要给 —— ECharts 默认写死白底，深色下点一下图就闪一块白），
+  由同一个测试逐项比对回 token；页面用 `useResolvedTheme()`（`app/theme.ts`）跟着 `data-theme` 重画。
 - **树状路径的基元**（2026-10-16 补，见 §8.1）：`.page-header`（页头外壳）、`.crumbs` /
   `.crumb-link` / `.crumb-here` / `.crumb-sep`（面包屑）、`.domain-nav` / `.nav-chip` / `.nav-chip--on`
   （域导航条），以及长页面用的 `.group` / `.group-title`（分组标题）。
@@ -1308,10 +1318,11 @@ Pinia 只放**会话态与派生态**：
 src/
   app/                 启动、路由、全局布局、错误边界
     nav.ts             导航树（域 → 页面）：底部 tab、页头域导航条、面包屑的唯一数据源（§8.1）
-    theme.ts           外观（FR-1606）：三选一 → 写 <html data-theme> + van-theme-dark，跟随系统时监听变化
+    theme.ts           外观（FR-1606）：三选一 → 写 <html data-theme> + van-theme-dark，跟随系统时监听变化；
+                       还给拿不到 CSS 变量的图表提供 `useResolvedTheme()` / `currentTheme()`
+    chartTheme.ts      图表的两套取值（ECharts 读不到 CSS 变量）：与 style.css 的 token 逐项对齐
     budget.ts          预算告警的界面出口：把 runTask 的估算转成「是否继续」确认框（§6.9）
   domain/              纯计算（§5.1），无 IO
-    foodAudit.ts       食物库治理的本地判定（疑似重复分组、数值一致）
     foodEdit.ts        手改数值（FR-406）：草稿解析 / 校验（越界只提醒）/ 只换六项
     nutrientRange.ts   六项数值的合理区间（模型校验与手改共用同一份）
     reminders.ts       提醒判定（未完成项 / 到点判定 / 默认项补齐 / 补记入口，纯函数）
@@ -1432,12 +1443,14 @@ scripts/
 | T4.1 | 导出包 / 导入（含三种冲突策略与预览） | ✅ 2026-10-16 完成：`io/exportPackage.ts` + `io/importPackage.ts` + `pages/DataPage.vue`（`/data`）；校验（应用 / 格式版本 / 数据库版本 / sha256 规范化校验和）→ 预演差异 → 三种冲突策略 → 导入报告，往返一致由 `import-package.spec.ts` 覆盖。口径见 §7.1 / §7.4 的「实现补充」。**「导出后 Python `check --all` 通过」属 T4.2**（工作区文本导出），本任务只做结构化 JSON |
 | T4.2 | 工作区文本导出（records / foods.csv / profile / targets） | ✅ 2026-10-16 完成：`io/markdown/export.ts`（记录 / CSV / 档案 / 目标渲染，含本地算的 AUTO 区块）+ `io/workspaceExport.ts`（读库、按内容排序、打包成单个文本包）+ `/data` 的「导出为工作区格式」卡片；`tests/workspace-script.spec.ts` 把导出结果摊进临时工作区**真跑** `check --all`（0 个问题）并逐日比对我们与脚本写的 AUTO 区块。口径见 §7.2 的「实现补充」 |
 | T4.3 | 快照与单日回滚 | ✅ 2026-10-16 完成：`data/repositories/snapshots.ts`（存取 + 保留上限）+ `io/snapshot.ts`（载荷与手写校验）+ `application/snapshot.ts`（自动快照 / 整天替换回滚）+ `/data` 的「快照与回滚」卡片；自动快照挂在「删单条记录」与「导入覆盖 / 合并之前」。口径见 §4.3 的「实现补充」 |
-| T4.4 | 食物库治理（来源筛选、疑似重复、停用） | ✅ 2026-10-16 完成：`domain/foodAudit.ts`（疑似重复分组 / 数值一致判定）+ `application/foodAdmin.ts`（概况、停用、删除保护）+ `pages/FoodsPage.vue`（`/foods`）。验收「被引用的条目不可删除」由 `foods-page.spec.ts`（按钮禁用）与 `food-admin.spec.ts`（业务规则拒绝并说明几条记录）两处钉住。口径见 §4.2 的「实现补充」；手改数值（FR-406）随后补齐，见下表 |
+| T4.4 | 食物库治理（来源筛选、停用） | ✅ 2026-10-16 完成（「疑似重复」卡片同日下线，理由见 §4.2 与 T4.8）：`application/foodAdmin.ts`（概况、停用、删除保护）+ `pages/FoodsPage.vue`（`/foods`）。验收「被引用的条目不可删除」由 `foods-page.spec.ts`（按钮禁用）与 `food-admin.spec.ts`（业务规则拒绝并说明几条记录）两处钉住。口径见 §4.2 的「实现补充」；手改数值（FR-406）随后补齐，见下表 |
 | T4.5 | 提醒方案落地（应用内提醒 + 能力探测的本地通知） | ✅ 2026-10-16 完成：`domain/reminders.ts`（纯判定）+ `application/reminders.ts`（查库凑事实）+ `application/notify.ts`（权限探测 / 一天只弹一次 / 前台每分钟检查）+ `/settings` 真页面（开关 / 时间 / 权限 / 限制说明）。今日页顶部「今天还没记的」卡片与它共用同一份判定。口径见 §9.4 的「实现补充」 |
 | T4.6 | 设置、免责声明、诊断信息导出 | ✅ 2026-10-16 完成：`app/theme.ts`（外观三选一 → 写 `<html data-theme>` + `van-theme-dark`）、`/settings` 的偏好卡片（单位只读说明 / 周起始日 / 外观）与「不再追问」逐条恢复、`pages/AboutPage.vue`（`/about`：需求 §9 七条原文 + 数据在哪 + 版本）、`io/diagnostics.ts` 诊断信息导出（不含 token 与记录内容）、`/data` 的离线队列界面与诊断导出。口径见 §9.4 / §10.2 的「实现补充」 |
 | FR-406 | 食物条目数值编辑 / 覆盖（DR-06 来源替换） | ✅ 2026-10-16 完成：`domain/foodEdit.ts`（草稿解析 / 校验 / 越界只提醒）+ `application/foodAdmin.ts` 的 `editFoodFacts`（来源替换成「手工」并留痕）+ `/foods` 每行的「改数值」内联编辑器。区间与模型校验共用 `domain/nutrientRange.ts`。口径见 §4.2 的「实现补充」 |
 
 | T4.7 | **界面与菜单重构：导航树 + 五域 IA**（2026-10-16） | ✅ 2026-10-16 完成：新增 `app/src/app/nav.ts`（导航树，唯一数据源）与页头自动渲染的域导航条 / 面包屑（`components/AppHeader.vue`）；底部 tab 由「今日 / 记录 / 趋势 / 报告 / 设置」改为**五个域**「今日 / 记录 / 分析 / 我的 / 设置」（覆盖全部路由，消灭七个「不高亮」的孤岛页）；新开「我的」域根 `pages/MePage.vue`（`/me`：档案与目标现状 + 本机数据）；`/settings` 按主题分四组、把「档案 / 数据 / 关于」挪去「我的」；「记录」域丢掉自带的 `van-tabs`、今日页拆掉「更多」卡片（入口统一由导航条给）。验收：`tests/navigation-reachability.spec.ts`（路由表 ⇄ 导航树一一对应 / 每页只归一个域 / 写死的跳转都指向存在的路由）、`tests/pages.spec.ts`（每个页面的 tab 高亮 + 导航条 + 面包屑）、`tests/me-page.spec.ts`。口径见 §8.1 |
+
+| T4.8 | **暗色缺陷统一修复 + 导航去重 + 食物库卡片下线 + 报告可删**（2026-10-16） | ✅ 2026-10-16 完成：(1) **颜色只写 token** —— 新增 `--warn-soft` / `--flag-soft` / `--on-danger`，修掉提醒卡片、「待核对」数字、危险按钮三处在深色下的对比度问题，并由 `tests/theme-tokens.spec.ts` 静态守住（页面里再出现颜色字面量就失败）；图表改走 `app/chartTheme.ts` 的两套取值 + `useResolvedTheme()`，连 ECharts 默认的白底提示框一起修。(2) 「记录」域根改为饮食面板 `/log/diet`（旧地址 `/log` 转过来），页头不再并排出现「记录」「饮食」两颗指向同一页的格子，并给 `NavDomain` 加了 `rootLabel`。(3) 「疑似重复」分组卡片下线（理由见 §4.2）。(4) 周报 / 月报可在列表与详情删除（`removeReport`，只做二次确认）。口径见 §4.2 / §8.1 / §8.5 |
 
 ---
 ## 14. 风险与对策

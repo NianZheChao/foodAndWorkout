@@ -31,12 +31,4 @@ export function parenOf(name: string): string {
   return matched ? matched[1].trim() : ''
 }
 
-/**
- * 「疑似重复」分组用的宽松键：去掉括号限定语后归一化。
- *
- * 与 `normalizeFoodName` 的区别是**故意丢掉括号内容** —— 分组要的是"可能是同一样东西"，
- * 括号里的生熟 / 全脂脱脂是不是真的区别，由用户看着数值自己判断（FR-408 只要求"提醒"）。
- */
-export function looseFoodKey(name: string): string {
-  return normalizeFoodName(baseNameOf(name))
-}
+
