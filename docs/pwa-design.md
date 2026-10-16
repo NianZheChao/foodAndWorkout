@@ -223,6 +223,28 @@ this.version(3).stores({ adviceLog: 'id, date, createdAt' })  // 其余表沿用
 - 迁移前自动写一次快照（`snapshots`），失败可回滚。
 - 迁移代码必须可单测：用上一版的样例数据构造 fixture，断言迁移后数据完整。
 
+**实现补充（2026-10-16，T4.3 已实现）**：`snapshots` 表的用法定成「安全网」，不是「版本管理」。
+落点 `data/repositories/snapshots.ts`（存取 + 上限）、`io/snapshot.ts`（载荷格式与校验）、
+`application/snapshot.ts`（自动快照与回滚编排）。
+
+| 点 | 口径 | 为什么 |
+| --- | --- | --- |
+| 快照拍什么 | 只拍**一天**：头部 + 摄入 + 训练 | 「某一天被写坏了」是真正会发生的场景；全库快照又大又和 §7.1 的导出包重复 |
+| 什么时候拍 | 破坏性写操作**之前**：删单条记录、导入覆盖 / 合并（只拍真会被改的日期）、回滚之前 | 事后再拍等于没拍 |
+| 内容没变时 | **不重复写**（`snapshotContentKey` 比内容，不比 JSON 文本） | 载荷里带 `takenAt`，比文本永远去不掉重；同一副安全网留一百份没有意义 |
+| 上限 | 只保留最近 100 条（`SNAPSHOT_KEEP`，写入后顺手 `pruneSnapshots`） | 不承诺「永远留着」，也不会把配额吃满 |
+| 载荷格式 | 本应用自己的 JSON，领域对象原样存；读回来走**手工结构检查** | 用 Zod 会剥掉 schema 之外的键 → 回滚时静默丢字段（与 §7.1 同一条理由） |
+| 回滚语义 | 整天替换（先删这一天三张表再写回）放在**一个事务**里，之后按本地口径重算汇总 | 删了旧的没写回新的，比不回滚更糟 |
+| 回滚本身 | 动手前先给「当前状态」拍一张，所以误点了还能滚回来 | 回滚是用户手滑最可能发生的入口 |
+| 坏快照 | 整条拒绝并说清哪里坏了，**一个字节都不改**（连「回滚前的备份」都不拍） | 宁可不动，也不写半份数据 |
+
+验收：`tests/snapshot.spec.ts`（内容去重 / 整天还原 / 回滚可再回滚 / 坏快照拒绝 / 保留上限 /
+导入前自动快照）与 `tests/data-page.spec.ts` 的快照卡片用例。
+
+> 本节原文的「**迁移前**自动写一次快照」还没做：现有 v1 → v3 迁移只是加表、不改写已有数据，
+> 没有值得回滚的中间态。等出现真正改写数据的迁移时，这里要一起补上（接口已经就位：
+> `captureDay(date, reason)` 换个 reason 即可）。
+
 ### 4.4 持久化与配额
 
 - 启动时请求持久化存储：`navigator.storage.persist()`；被拒绝时在数据页提示「浏览器可能在空间紧张时清理数据，请定期导出」。
@@ -832,8 +854,7 @@ interface LlmTask<In, Out> {
 - 导出完成后展示「条目数 + 校验和」，便于用户事后确认文件是否完整。
 - 导出文件默认命名为 `薄肌计划-export-YYYY-MM-DD.json`。
 
-**实现补充（2026-10-16，已实现）**：落点 `io/exportPackage.ts`（组装）+ `io/importPackage.ts`（校验 / 预演 / 落库）
-+ `pages/DataPage.vue`（`/data`）。下面几处是把格式落成口径时定的，交接时不要改回去。
+**实现补充（2026-10-16，已实现）**：落点 `io/exportPackage.ts`（组装）+ `io/importPackage.ts`（校验 / 预演 / 落库）+ `pages/DataPage.vue`（`/data`）。下面几处是把格式落成口径时定的，交接时不要改回去。
 
 | 点 | 口径 | 为什么 |
 | --- | --- | --- |
@@ -925,7 +946,7 @@ interface LlmTask<In, Out> {
 | `/profile` | 档案 | |
 | `/settings` | 设置 | 提醒、单位、外观、不再追问 |
 | `/settings/model` | 模型设置 | URL / token / 连通性 / 用量 |
-| `/data` | 数据 | 导出 / 导入 JSON（含预演与三种冲突策略，T4.1）+ 存储占用；快照回滚与队列界面待补（T4.3） |
+| `/data` | 数据 | 导出 / 导入 JSON（含预演与三种冲突策略，T4.1）、工作区文本导出（T4.2）、快照与单日回滚（T4.3）+ 存储占用；离线队列界面待补 |
 
 底部 Tabbar 只保留五个入口：今日、记录、趋势、报告、设置；其余页面从入口页二级进入（避免移动端层级过深）。
 
@@ -1134,7 +1155,7 @@ src/
   domain/              纯计算（§5.1），无 IO
   data/
     db.ts              Dexie schema 与版本迁移
-    repositories/      days / intake / workout / foods / reports / targets / profile / settings
+    repositories/      days / intake / workout / foods / reports / targets / profile / settings / snapshots
     seed/              foods.seed.json（由 data/foods.csv 构建期生成）
   llm/
     client.ts          OpenAI 兼容客户端：一次请求、超时、错误分类、baseUrl 归一化、并发 1
@@ -1147,12 +1168,14 @@ src/
     foodLibrary.ts     库内查找（精确 + 有限模糊）与「给模型看的名字清单」
     foodResolve.ts     food.resolve 应用层（缓存命中 / 范围与宏量校验 / 去重 / 失败入队）
     logParse.ts        log.parse 应用层（草稿 + 澄清清单 + 失败保原文）
+    snapshot.ts        快照与单日回滚（自动快照 / 整天替换 / 回滚前再拍一张）
   io/
     markdown/record.ts 记录文件解析（front-matter、章节、表格、组次文本）
     markdown/export.ts 导出回 Markdown / CSV（记录 + 档案 + 目标 + 食物库，含 AUTO 区块）
     exportPackage.ts   导出包构建与校验
     importPackage.ts   导入与冲突策略
     workspaceExport.ts 工作区文本导出（读库 + 打包成单个文本包）
+    snapshot.ts        日快照载荷格式与结构校验（回滚前必须先过这里）
   ui/
     pages/             今日 / 记录 hub（饮食·训练·身体）/ 当日汇总（其余先占位）
     components/        DateNav 等共享组件
@@ -1229,7 +1252,7 @@ scripts/
 | --- | --- | --- |
 | T4.1 | 导出包 / 导入（含三种冲突策略与预览） | ✅ 2026-10-16 完成：`io/exportPackage.ts` + `io/importPackage.ts` + `pages/DataPage.vue`（`/data`）；校验（应用 / 格式版本 / 数据库版本 / sha256 规范化校验和）→ 预演差异 → 三种冲突策略 → 导入报告，往返一致由 `import-package.spec.ts` 覆盖。口径见 §7.1 / §7.4 的「实现补充」。**「导出后 Python `check --all` 通过」属 T4.2**（工作区文本导出），本任务只做结构化 JSON |
 | T4.2 | 工作区文本导出（records / foods.csv / profile / targets） | ✅ 2026-10-16 完成：`io/markdown/export.ts`（记录 / CSV / 档案 / 目标渲染，含本地算的 AUTO 区块）+ `io/workspaceExport.ts`（读库、按内容排序、打包成单个文本包）+ `/data` 的「导出为工作区格式」卡片；`tests/workspace-script.spec.ts` 把导出结果摊进临时工作区**真跑** `check --all`（0 个问题）并逐日比对我们与脚本写的 AUTO 区块。口径见 §7.2 的「实现补充」 |
-| T4.3 | 快照与单日回滚 | 回滚后数据与快照一致 |
+| T4.3 | 快照与单日回滚 | ✅ 2026-10-16 完成：`data/repositories/snapshots.ts`（存取 + 保留上限）+ `io/snapshot.ts`（载荷与手写校验）+ `application/snapshot.ts`（自动快照 / 整天替换回滚）+ `/data` 的「快照与回滚」卡片；自动快照挂在「删单条记录」与「导入覆盖 / 合并之前」。口径见 §4.3 的「实现补充」 |
 | T4.4 | 食物库治理（来源筛选、疑似重复、停用） | 被引用的条目不可删除 |
 | T4.5 | 提醒方案落地（应用内提醒 + 能力探测的本地通知） | 打开应用能看到当天未完成项；系统支持时按设定时间通知；设置页写明限制 |
 | T4.6 | 设置、免责声明、诊断信息导出 | 需求 §9 与 FR-1608 可验 |

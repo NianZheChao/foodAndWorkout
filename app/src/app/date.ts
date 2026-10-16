@@ -30,3 +30,10 @@ export function recentDates(end: string, days: number): string[] {
   return Array.from({ length: days }, (_, index) => addDays(end, index - days + 1))
 }
 
+/** 时间戳（毫秒）→ `YYYY-MM-DD HH:mm`；空值显示 `—`。 */
+export function formatDateTime(value?: number): string {
+  if (!value) return '—'
+  const date = new Date(value)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}

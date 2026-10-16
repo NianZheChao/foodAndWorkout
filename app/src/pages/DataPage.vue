@@ -10,10 +10,19 @@
  */
 
 import { computed, onMounted, ref } from 'vue'
-import { showToast } from 'vant'
+import { showDialog, showToast } from 'vant'
 import AppHeader from '@/components/AppHeader.vue'
-import { todayIso } from '@/app/date'
+import { formatDateTime, todayIso } from '@/app/date'
 import { db } from '@/data/db'
+import { SNAPSHOT_KEEP } from '@/data/repositories/snapshots'
+import {
+  captureDay,
+  listSnapshotSummaries,
+  restoreDaySnapshot,
+  type RestoreReport,
+  type SnapshotSummary
+} from '@/application/snapshot'
+import { useDayStore } from '@/store/day'
 import { buildExportPackage, exportFileName, serializeExport, type ExportPackage } from '@/io/exportPackage'
 import {
   buildWorkspaceExport,
@@ -61,6 +70,9 @@ const pickedDates = ref<string[]>([])
 const report = ref<ImportReport>()
 const storageLabel = ref('')
 const fileInput = ref<HTMLInputElement>()
+const snapshotDate = ref(todayIso())
+const snapshots = ref<SnapshotSummary[]>([])
+const restoreReport = ref<RestoreReport>()
 
 async function loadCounts(): Promise<void> {
   const [days, intake, workout, foods, reports, calibrations, pendingOps, drafts, adviceLog, targets, profile, settings] =
@@ -79,6 +91,7 @@ async function loadCounts(): Promise<void> {
       db.settings.count()
     ])
   counts.value = { days, intake, workout, foods, reports, calibrations, pendingOps, drafts, adviceLog, targets, profile, settings }
+  snapshots.value = await listSnapshotSummaries(20)
 }
 
 onMounted(async () => {
@@ -202,6 +215,56 @@ async function exportWorkspace(): Promise<void> {
     busy.value = false
   }
 }
+
+/** 手动拍一张快照；内容与上一条完全一致时不会重复写（`deduped`）。 */
+async function takeSnapshot(): Promise<void> {
+  busy.value = true
+  errorMessage.value = ''
+  try {
+    const summary = await captureDay(snapshotDate.value, '手动快照')
+    await loadCounts()
+    showToast({ message: summary.deduped ? '与上一条快照内容一致，未重复保存' : '已拍一张快照', position: 'bottom' })
+  } catch (cause) {
+    errorMessage.value = `拍快照失败：${cause instanceof Error ? cause.message : String(cause)}`
+  } finally {
+    busy.value = false
+  }
+}
+
+/**
+ * 回滚到某一条快照。回滚是**整天替换**，所以要二次确认；动手前 `restoreDaySnapshot` 还会
+ * 自动给当前状态再拍一张，误点了也能滚回来。回滚的这一天正好是用户当前在看的那天时，
+ * 顺手让当日 store 重新读一次，免得回到今日页看到的是旧数据。
+ */
+async function rollback(item: SnapshotSummary): Promise<void> {
+  if (item.broken) {
+    errorMessage.value = '这条快照读不出来（可能被改坏或来自更新的版本），不能回滚。'
+    return
+  }
+  try {
+    await showDialog({
+      title: `回滚到 ${item.date}`,
+      message:
+        `这一天的记录会被替换成快照里的样子（饮食 ${item.counts.intake} 条 / 训练 ${item.counts.workout} 条）。` +
+        '回滚前会自动再拍一张当前状态，所以还能滚回来。'
+    })
+  } catch {
+    return
+  }
+  busy.value = true
+  errorMessage.value = ''
+  try {
+    const result = await restoreDaySnapshot(item.id)
+    restoreReport.value = result
+    await loadCounts()
+    if (useDayStore().date === result.date) await useDayStore().refresh()
+    showToast({ message: '已回滚', position: 'bottom' })
+  } catch (cause) {
+    errorMessage.value = `回滚失败：${cause instanceof Error ? cause.message : String(cause)}`
+  } finally {
+    busy.value = false
+  }
+}
 </script>
 
 <template>
@@ -260,6 +323,58 @@ async function exportWorkspace(): Promise<void> {
           <li v-for="file in workspace.files" :key="file.path">{{ file.path }}</li>
         </ul>
       </template>
+    </div>
+    <div class="card">
+      <h2 class="card-title">快照与回滚</h2>
+      <p class="muted">
+        可能毁数据的动作（导入覆盖 / 合并、删掉某条记录）之前，会自动给那一天拍一张快照。
+        回滚是 <strong>整天替换</strong>：头部、饮食、训练一起还原成快照里的样子，汇总按本地口径重算；
+        动手前还会再自动拍一张，所以点错了也能滚回来。
+      </p>
+      <div class="snapshot-row">
+        <input v-model="snapshotDate" class="snapshot-date" type="date" />
+        <van-button size="small" plain :loading="busy" @click="takeSnapshot">拍一张快照</van-button>
+      </div>
+      <p v-if="!snapshots.length" class="muted">还没有快照。</p>
+      <ul v-else class="snapshot-list">
+        <li v-for="item in snapshots" :key="item.id" class="snapshot-item">
+          <div class="snapshot-head">
+            <span>{{ formatDateTime(item.createdAt) }}</span>
+            <span class="snapshot-day">{{ item.date }}</span>
+          </div>
+          <p class="muted">{{ item.reason }}</p>
+          <div class="kv">
+            <span class="kv-key">内容</span>
+            <span class="kv-value">饮食 {{ item.counts.intake }} 条 · 训练 {{ item.counts.workout }} 条</span>
+          </div>
+          <p v-if="item.broken" class="muted warn-text">这条快照读不出来（被改坏或来自更新的版本），不能回滚。</p>
+          <div class="actions">
+            <van-button size="small" block :disabled="item.broken" :loading="busy" @click="rollback(item)">
+              回滚到 {{ item.date }}
+            </van-button>
+          </div>
+        </li>
+      </ul>
+      <template v-if="restoreReport">
+        <h2 class="card-title">回滚结果（{{ restoreReport.date }}）</h2>
+        <div class="kv">
+          <span class="kv-key">回滚后</span>
+          <span class="kv-value">
+            头部{{ restoreReport.restored.day ? '有' : '无' }} · 饮食 {{ restoreReport.restored.intake }} 条 · 训练 {{ restoreReport.restored.workout }} 条
+          </span>
+        </div>
+        <div class="kv">
+          <span class="kv-key">被替换掉的原状态</span>
+          <span class="kv-value">
+            头部{{ restoreReport.replaced.day ? '有' : '无' }} · 饮食 {{ restoreReport.replaced.intake }} 条 · 训练 {{ restoreReport.replaced.workout }} 条
+          </span>
+        </div>
+        <ul class="hint-list">
+          <li>汇总：{{ restoreReport.summaryRecomputed ? '已重算' : '那天没有记录，无需重算' }}</li>
+          <li>回滚前的自动备份：{{ restoreReport.backupId }}（原因写「回滚前自动快照」，也在上面的列表里）</li>
+        </ul>
+      </template>
+      <p class="muted">只保留最近 {{ SNAPSHOT_KEEP }} 条快照，更早的会被自动清掉。</p>
     </div>
 
     <div class="card">
@@ -410,3 +525,48 @@ async function exportWorkspace(): Promise<void> {
   font-size: 13px;
 }
 </style>
+
+.snapshot-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.snapshot-date {
+  flex: 1 1 150px;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.snapshot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.snapshot-item {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.snapshot-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.snapshot-day {
+  color: var(--text-muted);
+}

@@ -14,6 +14,13 @@ import { buildExportPackage, checksumOf, serializeExport } from '@/io/exportPack
 import { updateDay } from '@/data/repositories/days'
 import { addIntake } from '@/data/repositories/intake'
 
+// 回滚要先弹一个确认框：jsdom 里没人点它，`showDialog` 的 promise 永远不 resolve。
+// 只替掉这一个函数，`van-button` 之类的真实组件照旧。
+vi.mock('vant', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vant')>()
+  return { ...actual, showDialog: vi.fn(async () => undefined) }
+})
+
 const DATE = '2026-10-15'
 
 async function mountPage(): Promise<VueWrapper> {
@@ -132,5 +139,38 @@ describe('数据页：导入', () => {
       expect(await db.days.get('2026-10-14')).toBeDefined()
     })
     expect(wrapper.text()).toContain('导入报告')
+  })
+})
+
+describe('数据页：快照与回滚', () => {
+  it('拍一张快照 → 列表里看得见 → 回滚后给出「回滚后 / 被替换掉的原状态」', async () => {
+    await seed()
+    const wrapper = await mountPage()
+    expect(wrapper.text()).toContain('还没有快照')
+
+    await wrapper.find('input[type="date"]').setValue(DATE)
+    await button(wrapper, '拍一张快照').trigger('click')
+
+    const card = () => {
+      const found = wrapper.findAll('.card').find((item) => item.text().includes('快照与回滚'))
+      if (!found) throw new Error('找不到「快照与回滚」卡片')
+      return found
+    }
+    await vi.waitFor(() => expect(card().text()).toContain('手动快照'))
+    expect(card().text()).toContain('饮食 1 条 · 训练 0 条')
+
+    // 之后这一天被改烂了：晨重变了、那条饮食也没了
+    await updateDay(DATE, { weightAmKg: 80 })
+    await db.intake.clear()
+    await button(wrapper, `回滚到 ${DATE}`).trigger('click')
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('回滚结果'))
+    // 快照里的样子
+    expect(card().text()).toContain('头部有 · 饮食 1 条 · 训练 0 条')
+    // 回滚前本机是什么样（提示用户有没有回滚错版本）
+    expect(card().text()).toContain('头部有 · 饮食 0 条 · 训练 0 条')
+    const day = await db.days.get(DATE)
+    expect(day?.weightAmKg).toBe(75.1)
+    expect(await db.intake.count()).toBe(1)
   })
 })

@@ -13,6 +13,7 @@
 import { db, SCHEMA_VERSION, SINGLETON_KEY } from '@/data/db'
 import { toPlain } from '@/data/plain'
 import { recomputeDaySummary } from '@/application/daySummary'
+import { captureDay } from '@/application/snapshot'
 import { checksumOf, EXPORT_APP, EXPORT_FORMAT_VERSION, type ExportData, type ExportPackage } from './exportPackage'
 import type {
   DayRecord,
@@ -162,6 +163,8 @@ export interface ImportReport {
   /** 从文件补上的单例字段（本机为空、文件有值的那些） */
   singletonFields: string[]
   recomputedDays: number
+  /** 动手之前自动拍的快照张数（FR-1208）；「跳过」策略不拍，为 0 */
+  snapshots: number
 }
 
 const EMPTY = (value: unknown): boolean =>
@@ -273,12 +276,24 @@ export async function applyImport(pkg: ExportPackage, options: ImportOptions): P
     overriddenFields: [],
     duplicateFoods: 0,
     singletonFields: [],
-    recomputedDays: 0
+    recomputedDays: 0,
+    /** 导入前自动拍的快照张数（FR-1208） */
+    snapshots: 0
   }
   const bump = (key: string, count = 1): void => {
     report.added[key] = (report.added[key] ?? 0) + count
   }
   const touched = new Set<string>()
+
+  // 动手之前先给「马上要改掉的日期」各拍一张快照（FR-1208 的自动快照）：
+  // 合并会改到全部冲突日，覆盖只会改勾选的那些，「跳过」本机完全不动所以不拍。
+  // 快照写不进去（配额满 / 库打不开）时直接抛错打断导入 —— 带着「以为有安全网」的错觉继续写
+  // 比导入失败更糟。
+  const snapshotDates = options.strategy === 'overwrite' ? [...overwriteSet] : options.strategy === 'merge' ? preview.conflictDates : []
+  for (const date of snapshotDates) {
+    await captureDay(date, options.strategy === 'overwrite' ? '导入覆盖前自动快照' : '导入合并前自动快照')
+    report.snapshots += 1
+  }
 
   // 覆盖策略：先删掉本地那一天的三个表再整体写入。危险操作，只有显式勾选的日期才做。
   for (const date of overwriteSet) {

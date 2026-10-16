@@ -16,6 +16,7 @@ import {
 } from '@/data/repositories/intake'
 import { addWorkout, listWorkoutByDate, removeWorkout as removeWorkoutRow } from '@/data/repositories/workout'
 import { getTargets } from '@/data/repositories/targets'
+import { captureDay } from '@/application/snapshot'
 import { sumFacts } from '@/domain/nutrition'
 import { aggregateWorkouts } from '@/domain/training'
 import { buildDaySummary, type TargetValues } from '@/domain/targets'
@@ -165,11 +166,14 @@ export const useDayStore = defineStore('day', () => {
   }
 
   async function removeIntakeEntry(id: string): Promise<void> {
+    // 删之前先拍一张（FR-1208）：删错了能按日期回滚回来
+    await captureDay(date.value, '删除摄入条目前的自动快照')
     await removeIntakeRow(id)
     await refresh()
   }
 
   async function removeWorkoutEntry(id: string): Promise<void> {
+    await captureDay(date.value, '删除训练条目前的自动快照')
     await removeWorkoutRow(id)
     await refresh()
   }
