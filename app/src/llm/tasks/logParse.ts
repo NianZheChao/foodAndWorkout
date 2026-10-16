@@ -93,5 +93,7 @@ export const logParseTask: LlmTask<LogParseInput, LogParseOutput> = {
     imageCount: input.imageCount
   }),
   schema: logParseSchema,
+  // FR-1413：一句话解析 ≤600 输入，带图 ≤1500（图片按 85 tokens/张 计）
+  inputBudget: (input) => (input.imageCount ? 1500 : 600),
   maxOutputTokens: 900
 }

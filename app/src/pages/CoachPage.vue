@@ -28,6 +28,7 @@ import { getModelConfig, isModelConfigured } from '@/data/repositories/modelConf
 import { getSettings, saveSettings } from '@/data/repositories/settings'
 import { estimateTokens } from '@/llm'
 import { todayIso } from '@/app/date'
+import { confirmOverBudget } from '@/app/budget'
 import type { AdviceRecord } from '@/domain/types'
 
 const today = todayIso()
@@ -86,7 +87,7 @@ async function generate(force: boolean): Promise<void> {
   busy.value = true
   notice.value = ''
   try {
-    const outcome = await generateAdvice({ date: today, force })
+    const outcome = await generateAdvice({ date: today, force }, { confirm: confirmOverBudget })
     if (outcome.ok) {
       advice.value = outcome.record
       context.value = await buildCoachContext(today, { shareRecovery: share.value })

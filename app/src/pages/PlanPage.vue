@@ -29,6 +29,7 @@ import { fmtNumber, fmtPercent } from '@/domain/format'
 import { NUTRIENT_LABELS } from '@/domain/nutrition'
 import { estimateTokens } from '@/llm'
 import { todayIso } from '@/app/date'
+import { confirmOverBudget } from '@/app/budget'
 import type { MealPlanRecord, TrainingPlanRecord } from '@/domain/types'
 
 const today = todayIso()
@@ -86,8 +87,11 @@ const mealLines = computed(() => {
 async function run(kind: 'training' | 'meal', force: boolean): Promise<void> {
   busy.value = kind
   try {
+    const options = { confirm: confirmOverBudget }
     const outcome =
-      kind === 'training' ? await generateTrainingPlan({ date: today, force }) : await generateMealPlan({ date: today, force })
+      kind === 'training'
+        ? await generateTrainingPlan({ date: today, force }, options)
+        : await generateMealPlan({ date: today, force }, options)
     if (outcome.ok) {
       if (kind === 'training') training.value = outcome.record as TrainingPlanRecord
       else meal.value = outcome.record as MealPlanRecord

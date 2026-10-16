@@ -13,6 +13,7 @@ import { showToast } from 'vant'
 import AppHeader from '@/components/AppHeader.vue'
 import { generateReport, saveEditedContent } from '@/application/report'
 import { getReport } from '@/data/repositories/reports'
+import { confirmOverBudget } from '@/app/budget'
 import { buildNumberWhitelist } from '@/domain/reportGuard'
 import { coverageWarning } from '@/domain/reportDigest'
 import { fmtNumber, fmtPercent, fmtSigned } from '@/domain/format'
@@ -64,7 +65,7 @@ async function regenerate(): Promise<void> {
   if (!current) return
   busy.value = true
   try {
-    const outcome = await generateReport({ type: current.type, endDate: current.periodEnd })
+    const outcome = await generateReport({ type: current.type, endDate: current.periodEnd }, { confirm: confirmOverBudget })
     if (outcome.report) {
       showToast({ message: '已生成新版本，旧版本留在列表里', position: 'bottom' })
       await router.push(`/reports/${outcome.report.id}`)

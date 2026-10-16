@@ -89,6 +89,8 @@ export const planTrainingTask: LlmTask<PlanTrainingInput, PlanTrainingOutput> = 
   buildPayload: buildTrainingPayload,
   schema: trainingSchema,
   // FR-1413：推荐类 ≤600 输出
+  // FR-1413：推荐 ≤800 输入
+  inputBudget: 800,
   maxOutputTokens: 600
 }
 
@@ -157,5 +159,7 @@ export const planMealTask: LlmTask<PlanMealInput, PlanMealOutput> = {
   systemPrompt: MEAL_PROMPT,
   buildPayload: buildMealPayload,
   schema: mealSchema,
+  // FR-1413：推荐 ≤800 输入
+  inputBudget: 800,
   maxOutputTokens: 600
 }

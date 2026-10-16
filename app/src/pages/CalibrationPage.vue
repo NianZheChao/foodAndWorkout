@@ -17,6 +17,7 @@ import { showToast } from 'vant'
 import { useRouter } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import { todayIso } from '@/app/date'
+import { confirmOverBudget } from '@/app/budget'
 import {
   buildCalibrationReviewInput,
   reviewCalibration,
@@ -78,7 +79,7 @@ async function generate(): Promise<void> {
   busy.value = true
   notice.value = ''
   try {
-    const result = await reviewCalibration(input.value)
+    const result = await reviewCalibration(input.value, { confirm: confirmOverBudget })
     outcome.value = result
     if (!result.ok) {
       notice.value = `这次没能生成 AI 复核（${result.failure?.message ?? '未知原因'}）。下面的本地建议照常可用。`

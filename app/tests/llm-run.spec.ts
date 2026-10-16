@@ -14,6 +14,7 @@ const task: LlmTask<{ text: string }, { value: number }> = {
   systemPrompt: '只输出 JSON。',
   buildPayload: (input) => ({ text: input.text }),
   schema: z.object({ value: z.coerce.number() }),
+  inputBudget: 400,
   maxOutputTokens: 64
 }
 

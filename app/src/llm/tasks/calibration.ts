@@ -46,5 +46,7 @@ export const calibrationReviewTask: LlmTask<CalibrationReviewInput, CalibrationR
   systemPrompt: SYSTEM_PROMPT,
   buildPayload: buildCalibrationPayload,
   schema: calibrationContentSchema,
+  // FR-1413 没单列校准建议：它和「每日指导」一样只吃本地摘要，按推荐同档 800
+  inputBudget: 800,
   maxOutputTokens: 500
 }

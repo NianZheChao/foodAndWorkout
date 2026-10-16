@@ -6,7 +6,7 @@
 - 最后更新：2026-10-16
 - 应用版本：`0.1.0`（`app/package.json`）
 - 分支 / 最近提交：`main` / `c42cd12 feat: 生成式推荐（T3.8 第一步）：约束字段恢复 + /settings 开关 + 档案约束卡片`
-- 质量基线（2026-10-16 实测）：`npm test` 57 文件 / 540 项（`npm run build` 随之通过）；**全量并行跑时只剩一个已知偶发失败**（`workspace-script.spec.ts` 那条真去 `spawn` Python 的用例撞 5 秒默认超时），单独重跑即可，见 §8；`workspace-script.spec.ts` 没装 Python 时整组跳过；`npm run build`（含 `vue-tsc -b` 类型检查，**测试文件也在类型检查范围内**）通过
+- 质量基线（2026-10-16 实测）：`npm test` 59 文件 / 558 项（`npm run build` 随之通过）；**全量并行跑时只剩一个已知偶发失败**（`workspace-script.spec.ts` 那条真去 `spawn` Python 的用例撞 5 秒默认超时），单独重跑即可，见 §8；`workspace-script.spec.ts` 没装 Python 时整组跳过；`npm run build`（含 `vue-tsc -b` 类型检查，**测试文件也在类型检查范围内**）通过
 
 ## 0. 三十秒速览
 
@@ -14,7 +14,7 @@
 | --- | --- | --- |
 | 阶段 0 | 地基：脚手架、PWA 接入（含安装引导）、Dexie schema + 仓储层、种子食物库 | ✅ 完成 |
 | 阶段 1 | 本地能力闭环：领域计算、三类记录页、当日汇总、趋势页 | ✅ 完成 |
-| 阶段 2 | 模型能力：配置与连通性、LLM 客户端、食物补全、自由文本 / 图片记录、澄清引擎、队列执行器 | 🟡 主体完成，2 处收尾未做（见 §3） |
+| 阶段 2 | 模型能力：配置与连通性、LLM 客户端、食物补全、自由文本 / 图片记录、澄清引擎、队列执行器、token 预算告警 | ✅ 完成：最后一件收尾 T2.5（token 用量统计与预算告警）已在 §2.21 落地 |
 | 阶段 3 | 报告与指导：周报月报、每日指导（A 级）、校准向导、B 级推荐 | ✅ 完成：报告（T3.1 - T3.3）、摘要 v2（T3.6）、每日指导（T3.7，见 §2.10）、校准向导（T3.5，见 §2.11）、B 级生成式推荐（T3.8：安全边界见 §2.19 + 两个任务与 `/plan` 页见 §2.20）。T3.4（推荐周计划）当天立、当天翻，最终由 T3.8 以「默认关的可选开关」形式实现 |
 | 阶段 4 | 数据治理：导入导出、快照回滚、食物库治理、提醒、设置 | ✅ 完成：导出 / 导入（T4.1，见 §2.12）、工作区文本导出（T4.2，见 §2.13）、快照回滚（T4.3，见 §2.14）、食物库治理（T4.4，见 §2.15）、提醒（T4.5，见 §2.16）、设置收尾（T4.6，见 §2.17）与手改食物数值（FR-406，见 §2.18）都已落地 —— **这一阶段没有欠账了** |
 
@@ -626,16 +626,47 @@ T4.4 留下的那笔欠账：模型给的六项数值是**估算**，手里有�
   禁用与去处 / 缺项明细 / 清单渲染 / 缺口与采购 / 预览 / 返回）；`db.spec.ts` 与
   `import-package.spec.ts` 的存储清单与空包 fixture 各补一项。口径见设计文档 §4.2 的两段「实现补充」。
 
+### 2.21 T2.5 收尾：token 预算告警（2026-10-16）
+
+阶段 2 的最后一件收尾。§2.17 之后整份计划本来只剩 T3.8，而 §3 表里还挂着 T2.5 的
+「单次任务超出预算 2 倍时的『是否继续』确认弹窗」—— 设计文档 §6.9 早就写了这条策略，
+代码里只差「算得出预算、问得出用户」这两步。
+
+- **预算先变成任务声明的一部分**：`LlmTask` 新增 `inputBudget`（FR-1413 的目标值），
+  与既有的 `maxOutputTokens` 合成「任务预算 = 输入预算 + 输出上限」（`llm/types.ts` 的
+  `budgetOf`）。8 个任务逐个标注：食物 400 / 一句话 600（带图 1500）/ 报告 1500 /
+  推荐 800；**`coach.daily` 与 `calibration.review` 在 FR-1413 里没单列**，两者都只吃
+  本地摘要，按推荐同档 800 处理并在代码里写明了出处。
+- **估算用一把尺子**：`llm/client.ts` 抽出 `estimatePromptTokens`（正文 + 图片 × 85），
+  调用日志与预算告警共用它，避免「日志里一个数、告警里另一个数」。
+- **只在超线时才问**：估算 > 任务预算 × 2（`BUDGET_WARN_RATIO`）时 `runTask` 调
+  `options.confirm(notice)`；`notice` 里带 `taskId / estimatedTokens / budgetTokens / ratio`。
+- **用户说「先不发」就一个请求都不发**：`runTask` 直接返回 `kind: 'cancelled'`（`errors.ts`
+  新增这个分类），不消耗 token、不进用量日志（日志只记真花了的钱），原文与图片都留在草稿里。
+- **没有确认通道就照发**：`confirm` 是可选回调，队列重放与后台任务都不传 —— 预算告警是给
+  用户看的，不是拿来拦记录链路的（DR-44）。
+- **界面实现单独一层**：`app/budget.ts` 的 `confirmOverBudget` 用 Vant 的
+  `showConfirmDialog`，把「估算 / 预算 / 几倍」说成人话；关掉弹窗（点遮罩、返回）按
+  「先不发」算。`llm/` 只负责算，弹窗交给 `app/`，换个壳子（CLI / 桌面）照样能接。
+- **接线点**：一句话记录（`LogQuickPage`）、每日指导、报告（列表页与详情页的重新生成）、
+  推荐（`/plan`）、校准向导 —— 六处都传了 `confirmOverBudget`；**队列 `runQueue` 不传**。
+- 验收：`npm test` 59 文件 / 558 项、`npm run build` 通过。新用例 `llm-budget.spec.ts`（15：
+  超线才问 / 同意才发 / 拒绝就零请求零日志 / 无通道照发 + 9 个任务的预算与 FR-1413 对得上）、
+  `budget-confirm.spec.ts`（3：文案带估算与预算 / 取消与关窗都算不发 / 不足 1000 不写成 0.4k）。
+  口径见设计文档 §6.2 / §6.9 与 §13 的 T2.5 行。
+
 ## 3. 部分完成：有明确缺口（优先补这些）
 
 | 编号 | 已实现 | 缺什么 | 建议落点 |
 | --- | --- | --- | --- |
-| T2.5 | 每次调用都写 `llmLogs`；模型设置页汇总次数 / 失败数 / 输入输出估算，并可清空 | 单次任务超出预算 2 倍时的「是否继续」确认弹窗 | `app/src/llm/index.ts`（估算是现成的）+ `LogQuickPage` 的交互 |
 | FR-801 伤病约束 | 训练的器材白名单、加重 +10% 提示、恢复窗口都已落地（§2.20） | **伤病约束没有来源**：档案瘦身时下线了 `injuries`，FR-1003 只要求恢复四项，所以输入里不含它 | 要补得先改 `ProfileRecord` 与 FR-1003（见设计文档 §4.2 的「实现补充」），不能只在提示词里假装有 |
 
 ## 4. 未开始
 
-**没有未开始的任务。** 阶段 0 ~ 阶段 4 的任务都已落地；§3 那两条是明确的已知缺口，不是没开工。
+**没有未开始的任务。** 阶段 0 ~ 阶段 4 的任务都已落地；§3 剩下的那一条是明确的已知缺口，不是没开工。
+
+> **阶段 2 的收尾 T2.5（token 用量统计与预算告警）已于 2026-10-16 完成**，见 §2.21 ——
+> 阶段 2 从此也没有欠账，§3 表里只剩 FR-801 的伤病约束这一条（它要改需求 FR-1003，不属收尾）。
 
 ### 4.1 阶段 3：报告与推荐（P1）
 
@@ -684,7 +715,8 @@ T3.8（B 级生成式推荐，两步）全部完成，见 §2.7 - §2.11 与 §2
 ```
 app/
   src/
-    app/          启动流程（bootstrap：开库 + 写种子）、日期工具、设置、外观（theme）、图片压缩
+    app/          启动流程（bootstrap：开库 + 写种子）、日期工具、设置、外观（theme）、图片压缩、
+                  budget（预算告警的确认弹窗，§2.21）
     domain/       纯计算与领域类型 —— 无 IO、不依赖 Vue / Dexie（对拍测试直接打这里）；
                   foodName / foodAudit 是食物库的名称归一化与疑似重复判定；foodEdit / nutrientRange 是手改数值的
                   解析与合理区间（区间与模型校验共用）；reminders 是提醒的判定、默认时间段与补记入口；
@@ -716,7 +748,9 @@ app/
 | TDEE 反推 | `domain/tdee.ts` `estimateTdee` / `theilSenSlope` |
 | 首次目标估算 / 校准幅度 | `domain/calibration.ts` `buildInitialTargets` / `proposeCalibration` |
 | 澄清问题生成 | `domain/clarify.ts` `buildClarifyPlan` / `parseClarifyAnswer` |
-| 模型调用主流程 | `llm/index.ts` `runTask`（重试、降级、日志）、`probeModel` |
+| 模型调用主流程 | `llm/index.ts` `runTask`（重试、降级、预算告警、日志）、`probeModel` |
+| 任务的预算声明（FR-1413） | `llm/types.ts` `LlmTask.inputBudget` / `budgetOf` / `BUDGET_WARN_RATIO`；8 个任务的取值在 `llm/tasks/*.ts` |
+| 预算告警的弹窗（T2.5） | `app/budget.ts` `confirmOverBudget`；输入估算在 `llm/client.ts` `estimatePromptTokens` |
 | HTTP 细节与地址归一化 | `llm/client.ts` `normalizeBaseUrl` / `chatCompletion` |
 | 模型返回的脏文本 | `llm/text.ts` `parseJsonFromModel` / `estimateTokens` |
 | 任务契约（新增任务时） | `llm/types.ts` `LlmTask`，再注册进 `llm/index.ts` 的 `TASKS` |
@@ -770,7 +804,7 @@ app/
 ```bash
 npm install
 npm run dev       # 本地开发服务器
-npm test          # 单元 / 对拍 / 组件测试（57 文件 / 540 项）
+npm test          # 单元 / 对拍 / 组件测试（59 文件 / 558 项）
 npm run build     # vue-tsc 类型检查 + 生产构建（产物 dist/）
 npm run preview   # 预览构建产物 —— 测 PWA 行为请用这个，不要用 dev
 npm run seed      # 从 ../data/foods.csv 重新生成内置食物库种子
@@ -819,7 +853,11 @@ npm run build
     `DataCloneError`。这一层**统一收在仓储写入**：`src/data/plain.ts` 的 `toPlain()`，
     所有 `db.*.put/update` 的入参都过一遍。新写仓储时别漏 —— 只做浅拷贝（`{...obj}`）没用，
     里面的数组 / 嵌套对象仍然是 Proxy。回归用例 `app/tests/plain-write.spec.ts`。
-16. **不要 `git push --force`**：包括重写历史这类操作，必须由使用者**显式授权**后再做，
+17. **新增模型任务要声明 `inputBudget`**：它是 `LlmTask` 的必填字段（FR-1413 的目标值），与
+    `maxOutputTokens` 一起构成预算告警的基线。取值照抄 FR-1413；需求没单列的任务（如每日指导、
+    校准建议）按同类摘要型任务的 800 取，并在代码注释里写明出处。界面只要给应用层的
+    `options.confirm` 传 `confirmOverBudget`（`app/budget.ts`）就接上了；**队列与后台一律不传**。
+18. **不要 `git push --force`**：包括重写历史这类操作，必须由使用者**显式授权**后再做，
     并且动手前先在仓库外留一份完整备份（含 `.git`）。
 
 ## 8. 已知坑（踩过的，别再踩）
@@ -926,15 +964,21 @@ npm run build
     来源替换成「手工」并留痕，越界只提醒不拦。阶段 4 到此没有欠账了。
 12. ~~T3.8 第一步：B 级推荐的安全边界~~ —— 2026-10-16 已完成（见 §2.19）：四项约束回到档案、
     开关默认关且四项没齐打不开、导出 / 导入都不丢字段。
-13. **T3.8 第二步：`plan.training` / `plan.meal` 与 `/plan` 页** —— 整份计划剩下的最后一件。
+13. ~~T3.8 第二步：`plan.training` / `plan.meal` 与 `/plan` 页~~ —— 2026-10-16 已完成（见 §2.20）：
     按设计文档 §6.5 / §6.6 的契约发缺口与约束，回来按食物库**本地复算**（FR-806），
     并给采购清单（FR-804）；开关关着时整条链路不可用。
+14. ~~T2.5 收尾：token 预算告警~~ —— 2026-10-16 已完成（见 §2.21）：任务声明 `inputBudget`，
+    估算超任务预算 2 倍时问一句「还发吗」，界面实现是 `app/budget.ts`。
+
+**到 2026-10-16 为止，整份计划（阶段 0 ~ 阶段 4）已全部完成**，剩下的只有 §3 表里 FR-801 的
+伤病约束一条 —— 它要先把 `injuries` 加回 `ProfileRecord` 并改需求 FR-1003，属于「要不要扩范围」的产品决定，
+不是收尾活儿。
 
 每一步都能独立验收；建议每完成一项就更新本文第 2 / 3 / 4 节的表格，以及 `docs/pwa-design.md` §13 的状态标记。
 
 ## 10. 交接自检清单
 
-- [ ] `cd app && npm install && npm test`（57 文件 / 540 项；`workspace-script.spec.ts`
+- [ ] `cd app && npm install && npm test`（59 文件 / 558 项；`workspace-script.spec.ts`
       偶发失败时重跑一次即可，见 §8）
 - [ ] `npm run build` 通过
 - [ ] `npm run preview` 能打开今日页，底部 tab 来回切换不卡死

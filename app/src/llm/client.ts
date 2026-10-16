@@ -53,6 +53,11 @@ export function chatCompletionsUrl(baseUrl: string): string {
   return `${normalizeBaseUrl(baseUrl)}/chat/completions`
 }
 
+/** 整条请求的输入 token 粗估（正文 + 图片），预算告警与调用日志共用同一把尺子。 */
+export function estimatePromptTokens(messages: readonly ChatMessage[]): number {
+  return estimateTokens(messagesToText(messages)) + countImages(messages) * IMAGE_TOKEN_ESTIMATE
+}
+
 function messagesToText(messages: readonly ChatMessage[]): string {
   return messages
     .map((message) => {
@@ -228,7 +233,7 @@ async function requestOnce(request: ChatRequest, deps: ClientDeps): Promise<Chat
     text,
     model: (payload as { model?: string }).model ?? request.model,
     durationMs: now() - startedAt,
-    promptTokensEst: estimateTokens(messagesToText(request.messages)) + countImages(request.messages) * IMAGE_TOKEN_ESTIMATE,
+    promptTokensEst: estimatePromptTokens(request.messages),
     completionTokensEst: estimateTokens(text),
     usage: usage ? { promptTokens: usage.prompt_tokens, completionTokens: usage.completion_tokens } : undefined
   }

@@ -59,5 +59,7 @@ export const coachDailyTask: LlmTask<CoachTaskInput, CoachContent> = {
   systemPrompt: SYSTEM_PROMPT,
   buildPayload: buildCoachPayload,
   schema: coachContentSchema,
+  // FR-1413 没单列每日指导：输入是 reportDigest 摘要，按推荐同档 800
+  inputBudget: 800,
   maxOutputTokens: 600
 }

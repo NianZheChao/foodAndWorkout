@@ -16,6 +16,7 @@ import { listReports } from '@/data/repositories/reports'
 import { fmtNumber, fmtPercent } from '@/domain/format'
 import { coverageWarning, periodOf } from '@/domain/reportDigest'
 import { todayIso } from '@/app/date'
+import { confirmOverBudget } from '@/app/budget'
 import type { ReportRecord, ReportType } from '@/domain/types'
 
 const router = useRouter()
@@ -39,7 +40,7 @@ async function generate(type: ReportType): Promise<void> {
   busy.value = type
   notice.value = ''
   try {
-    const outcome = await generateReport({ type, endDate: today })
+    const outcome = await generateReport({ type, endDate: today }, { confirm: confirmOverBudget })
     if (outcome.ok && outcome.report) {
       await router.push(`/reports/${outcome.report.id}`)
       return
@@ -63,7 +64,7 @@ function statusLabel(row: ReportRecord): string {
 async function regenerate(row: ReportRecord): Promise<void> {
   busy.value = row.type
   try {
-    const outcome = await generateReport({ type: row.type, endDate: row.periodEnd })
+    const outcome = await generateReport({ type: row.type, endDate: row.periodEnd }, { confirm: confirmOverBudget })
     if (outcome.report) showToast({ message: '已生成新版本，旧版本保留在列表里', position: 'bottom' })
     await load()
   } finally {

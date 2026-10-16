@@ -431,7 +431,8 @@ interface LlmTask<In, Out> {
   systemPrompt: string;       // 固定且短
   buildPayload(input: In): unknown;    // 只放必需字段（DR-40）
   schema: ZodSchema<Out>;     // 输出契约
-  maxOutputTokens: number;
+  inputBudget: number;        // 输入预算（FR-1413 的目标值），预算告警用
+  maxOutputTokens: number;    // 输出上限；两者都可写成「按输入规模缩放」的函数
   cache?: (input: In, out: Out) => void; // 落库缓存（如食物库）
 }
 ```
@@ -793,7 +794,7 @@ interface LlmTask<In, Out> {
 | 图片瘦身 | 上传前本地压缩（长边 ≤ 1024px、JPEG 质量 0.7）并只发必要张数；单次请求图片 ≤ 3 张；图片 token 成本在发送前提示用户（FR-1417） |
 | 提示词精简 | system prompt 固定 ≤ 200 字；JSON 结构以「键名 + 一行说明」给出，不写长范例 |
 | 用量可见 | 每次调用记录 `promptTokensEst / completionTokensEst`（按 `chars/1.6`（中文）与 `chars/4`（ASCII）粗估）；设置页汇总（FR-1414） |
-| 预算告警 | 单次请求估算超过任务预算的 2 倍时，先提示用户「本次请求较大，是否继续」 |
+| 预算告警 | 单次请求估算（输入正文 + 图片 × 85 + 输出上限）超过任务预算（`inputBudget + maxOutputTokens`）2 倍时，先问「本次请求较大，是否继续」；**没有确认通道时照发**，队列重放与后台不受影响 |
 
 ### 6.10 队列与离线降级
 
@@ -1270,6 +1271,7 @@ Pinia 只放**会话态与派生态**：
 src/
   app/                 启动、路由、全局布局、错误边界
     theme.ts           外观（FR-1606）：三选一 → 写 <html data-theme> + van-theme-dark，跟随系统时监听变化
+    budget.ts          预算告警的界面出口：把 runTask 的估算转成「是否继续」确认框（§6.9）
   domain/              纯计算（§5.1），无 IO
     foodAudit.ts       食物库治理的本地判定（疑似重复分组、数值一致）
     foodEdit.ts        手改数值（FR-406）：草稿解析 / 校验（越界只提醒）/ 只换六项
@@ -1286,8 +1288,8 @@ src/
     client.ts          OpenAI 兼容客户端：一次请求、超时、错误分类、baseUrl 归一化、并发 1
     errors.ts          LlmError 分类（重试 / 入队 / 提示三种处置）
     text.ts            剥 ``` 包裹、配平抽取 JSON、token 估算
-    types.ts           LlmTask 契约（buildPayload / Zod schema / 输出上限）
-    index.ts           runTask 流水线（校验重试、response_format 降级、调用日志）与 probeModel
+    types.ts           LlmTask 契约（buildPayload / Zod schema / 输入预算与输出上限 + 预算告警阈值）
+    index.ts           runTask 流水线（校验重试、response_format 降级、预算告警、调用日志）与 probeModel
     tasks/             每个契约一个文件：food.resolve / log.parse / report.* / coach.daily / calibration.review / plan.*
   application/         用例层：本地优先、业务校验、落库编排
     foodLibrary.ts     库内查找（精确 + 有限模糊）与「给模型看的名字清单」
@@ -1361,10 +1363,10 @@ scripts/
 | T2.1 | 模型配置页 + 连通性测试 | ✅ 2026-10-15：`ModelSettingsPage.vue` + `probeModel`；401/404/超时/非 JSON 分类见 `llm-client.spec.ts`，探测结果与上次测试结论写入配置（`model-settings-page.spec.ts`） |
 | T2.2 | LLM 客户端（重试、超时、`response_format` 降级） | ✅ 2026-10-15：`llm/client.ts` 只做一次请求 + 错误分类，重试/降级集中在 `runTask`；并发上限 1（串行）有单测；降级后写 `supportsJsonResponse=false` 备忘录 |
 | T2.3 | `food.resolve` 任务 + 确认卡片 + 落库 | ✅ 2026-10-15：`application/foodResolve.ts` 本地优先（含有限模糊匹配）、范围 + 宏量自洽 + 酒精豁免校验、去重提示；`food-resolve.spec.ts` 覆盖。确认卡片 UI 先接在「一句话记录」的落库链路里，「食物库」页的治理界面属 T4.4 |
-| T2.4 | 待办队列 + 离线占位 + 回填回算 | 🟡 2026-10-15：失败已按「等网络 / 需处理」写入 `pendingOps`，未算出的条目以 `pendingFlag` 占位（汇总标「不完整」）；自动补全的执行器（联网后串行重放）待在「数据」页落地 |
-| T2.5 | token 用量统计与预算告警 | 🟡 2026-10-15：每次调用写 `llmLogs`（只有估算值与状态，无正文），模型设置页汇总次数 / 失败数 / 输入输出估算并可清空；超出任务预算 2 倍的「是否继续」提示待接 |
+| T2.4 | 待办队列 + 离线占位 + 回填回算 | ✅ 2026-10-15 完成：失败按「等网络 / 需处理」写入 `pendingOps`，未算出的条目以 `pendingFlag` 占位（汇总标「不完整」）；执行器 `application/queue.ts` 在启动与 `online` 事件时串行重放，可疑值转 `needs-attention` 等用户拍板，界面在 `/data` 的离线队列卡片（进度文档 §2.5） |
+| T2.5 | token 用量统计与预算告警 | ✅ 2026-10-16：每次调用写 `llmLogs`（只有估算值与状态，无正文），模型设置页汇总次数 / 失败数 / 输入输出估算并可清空；每个任务声明 `inputBudget`（FR-1413），估算超任务预算 2 倍时 `runTask` 交给 `options.confirm` 问一句，界面实现是 `app/budget.ts`（`confirmOverBudget`），没接确认通道的一律照发 —— 见 §6.9 与进度文档 §2.21 |
 | T2.6 | `log.parse` 自由文本解析 + 草稿确认交互 + 澄清追问引擎 | ✅ 2026-10-15：`LogQuickPage.vue` + `store/draft.ts` + `domain/clarify.ts`；草稿存 `drafts` 表，问题按 `<条目>.<字段>` 去重、阻塞项优先、支持「不再追问」名单；`log-parse.spec.ts` / `clarify.spec.ts` / `quick-log-page.spec.ts` 覆盖「任意描述 → 草稿 → 追问 → 落库」与「模型失败也留住原文」 |
-| T2.7 | `log.parse.vision` 图片记录（压缩、张数上限、隐私提示、草稿确认） | 🟡 2026-10-15：本地压缩（长边 ≤1024 / JPEG 0.7 / 丢 EXIF）、单次 ≤3 张、发送前提示成本与「图片会发给你配置的模型服务」、请求结束即释放（不落库）均已实现并测到；`unsupported-image` 时提示「当前模型不支持图片输入」的降级分支已分类，UI 引导待补 |
+| T2.7 | `log.parse.vision` 图片记录（压缩、张数上限、隐私提示、草稿确认） | ✅ 2026-10-15 完成：本地压缩（长边 ≤1024 / JPEG 0.7 / 丢 EXIF）、单次 ≤3 张、发送前提示成本与「图片会发给你配置的模型服务」、请求结束即释放（不落库）；`unsupported-image` 时给两条出口（去掉图片改用文字重试 / 去模型设置换模型）。进度文档 §2.5 |
 
 ### 阶段 3：报告与推荐（P1）
 

@@ -35,6 +35,9 @@
 5. **队列重放必须传 `{ enqueueOnFailure: false }`**，否则「重试失败 → 又排一条」会让队列自增。
 6. **写库前把响应式对象拍平**：界面传进 `application/` 的对象可能是 Vue 响应式代理，直接 `put` 会
    `DataCloneError`，落库前深拷一份纯 JSON。
+7. **新增模型任务要声明输入预算**：`LlmTask.inputBudget`（FR-1413 的目标值）与 `maxOutputTokens`
+   一起构成预算告警的基线，估算超基线 2 倍时界面用 `confirmOverBudget`（`app/budget.ts`）问一句；
+   这个确认通道是可选的，**队列与后台一律不传**（告警不拦记录链路）。
 
 ## 界面
 

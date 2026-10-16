@@ -6,10 +6,10 @@
  * **业务校验（范围 / 自洽 / 门禁）在 application 层做**，因为那一步需要读本地库。
  */
 
-import { chatCompletion, type ChatContentPart, type ChatMessage, type ClientDeps } from './client'
+import { chatCompletion, estimatePromptTokens, type ChatContentPart, type ChatMessage, type ClientDeps } from './client'
 import { toLlmError, type LlmErrorKind } from './errors'
 import { parseJsonFromModel } from './text'
-import { outputLimitOf, type LlmTask } from './types'
+import { BUDGET_WARN_RATIO, budgetOf, outputLimitOf, type LlmTask } from './types'
 import { calibrationReviewTask } from './tasks/calibration'
 import { coachDailyTask } from './tasks/coach'
 import { foodResolveTask } from './tasks/foodResolve'
@@ -40,6 +40,14 @@ export interface RunSuccess<Out> {
   durationMs: number
 }
 
+/** 预算告警的内容：估算多少、任务预算是多少、超了几倍（§6.9）。 */
+export interface BudgetNotice {
+  taskId: string
+  estimatedTokens: number
+  budgetTokens: number
+  ratio: number
+}
+
 export interface RunFailure {
   ok: false
   kind: LlmErrorKind
@@ -48,6 +56,8 @@ export interface RunFailure {
   retriable: boolean
   raw?: string
   validationError?: string
+  /** 因为估算过大、用户选了「先不发」而中止时带上它，界面好把数字说清楚 */
+  budget?: BudgetNotice
 }
 
 export type RunResult<Out> = RunSuccess<Out> | RunFailure
@@ -63,6 +73,12 @@ export interface RunOptions {
   skipLog?: boolean
   /** 附加在 user 消息里的图片（data URL）；与文字同一条 user message（§6.11） */
   extraUserParts?: ChatContentPart[]
+  /**
+   * 预算告警的确认通道：估算超过任务预算 `BUDGET_WARN_RATIO` 倍时先问一句「还发吗」。
+   *
+   * **不传就当同意** —— 队列重放与后台任务不该被弹窗拦住，记录链路更不能因此断掉（DR-44）。
+   */
+  confirm?: (notice: BudgetNotice) => boolean | Promise<boolean>
 }
 
 function defaultSleep(ms: number): Promise<void> {
@@ -126,6 +142,22 @@ export async function runTask<In, Out>(
         : JSON.stringify(task.buildPayload(input))
     }
   ]
+
+  // 预算告警（§6.9）：估算 = 输入（正文 + 图片）+ 输出上限，超任务预算 2 倍就问一句。
+  // 没有确认通道（队列重放 / 后台）时直接发：告警是给用户看的，不是用来拦记录的。
+  const budgetTokens = budgetOf(task, input)
+  const estimatedTokens = estimatePromptTokens(baseMessages) + maxOutputTokens
+  const ratio = budgetTokens > 0 ? estimatedTokens / budgetTokens : 1
+  const budget: BudgetNotice = { taskId: task.id, estimatedTokens, budgetTokens, ratio }
+  if (ratio > BUDGET_WARN_RATIO && options.confirm && !(await options.confirm(budget))) {
+    return {
+      ok: false,
+      kind: 'cancelled',
+      message: `这次请求约 ${estimatedTokens} tokens，是任务预算（${budgetTokens}）的 ${ratio.toFixed(1)} 倍，你选了先不发`,
+      retriable: false,
+      budget
+    }
+  }
 
   let jsonResponse = config.supportsJsonResponse !== false
   let downgraded = false

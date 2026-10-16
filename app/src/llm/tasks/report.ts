@@ -63,6 +63,8 @@ function makeReportTask(type: ReportType): LlmTask<ReportTaskInput, ReportConten
     systemPrompt: `${SHARED_PROMPT}你要写的是${scope}的复盘：训练、饮食、恢复各一两句，再给可执行的动作。`,
     buildPayload: buildReportPayload,
     schema: reportContentSchema,
+    // FR-1413：周报 / 月报 ≤1500 输入 / ≤1200 输出
+    inputBudget: 1500,
     maxOutputTokens: type === 'weekly' ? 900 : 1200
   }
 }

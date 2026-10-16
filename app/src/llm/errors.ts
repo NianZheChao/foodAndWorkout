@@ -14,6 +14,8 @@ export type LlmErrorKind =
   | 'empty-response'
   | 'bad-json'
   | 'schema'
+  // 估算超预算、用户在告警里选了「先不发」：不是失败，是用户的选择（§6.9）
+  | 'cancelled'
 
 export interface LlmErrorOptions {
   status?: number

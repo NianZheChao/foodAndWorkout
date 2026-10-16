@@ -15,6 +15,7 @@ import { useDayStore } from '@/store/day'
 import { useDraftStore, type DraftIntakeRow, type DraftWorkoutRow } from '@/store/draft'
 import { compressImageFile } from '@/app/image'
 import { todayIso } from '@/app/date'
+import { confirmOverBudget } from '@/app/budget'
 import { IMAGE_TOKEN_ESTIMATE } from '@/llm'
 import { fmtNumber } from '@/domain/format'
 import type { DraftKind, Meal } from '@/domain/types'
@@ -82,13 +83,17 @@ function removeImage(index: number): void {
 }
 
 async function parse(): Promise<void> {
-  const status = await draft.submit({
-    date: todayIso(),
-    text: text.value,
-    kind: kind.value,
-    meal: meal.value,
-    images: [...images.value]
-  })
+  const status = await draft.submit(
+    {
+      date: todayIso(),
+      text: text.value,
+      kind: kind.value,
+      meal: meal.value,
+      images: [...images.value]
+    },
+    // 估算超预算时问一句（§6.9）；选「先不发」不算失败，原文与图都还留着，可以直接改短再试
+    { confirm: confirmOverBudget }
+  )
   if (status !== 'failed') {
     // 图片只存在于内存，请求结束即释放（FR-1417）
     images.value = []

@@ -45,5 +45,7 @@ export const foodResolveTask: LlmTask<FoodResolveInput, FoodResolveOutput> = {
   }),
   schema: foodResolveSchema,
   // 10 条一起问时 300 tokens 装不下，按条目数放大并封顶（§6.9 的 300 是单条基线）
+  // FR-1413：单次食物解析 ≤400 输入。合并请求里多出来的只是食物名，涨的是输出那一头
+  inputBudget: 400,
   maxOutputTokens: (input) => Math.min(1200, 140 * input.items.length + 60)
 }
