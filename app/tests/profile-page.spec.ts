@@ -98,9 +98,14 @@ describe('档案页', () => {
     expect(saved.heightCm).toBe(175)
     expect(saved.weightKg).toBe(75)
     expect(saved.conventions.some((line) => line.includes('不记录饮水'))).toBe(true)
-    // 推荐相关的字段已经不在模型里了（2026-10-16 范围调整）
-    expect('equipment' in saved).toBe(false)
+    // 四项安全边界按 FR-1003 恢复到模型里（T3.8），没填就是空数组而不是 undefined
+    expect(saved.avoidFoods).toEqual([])
+    expect(saved.allergies).toEqual([])
+    expect(saved.equipment).toEqual([])
+    expect(saved.mealMinutes).toBeUndefined()
+    // 仍然不恢复的是这几个：推荐输入里用不到
     expect('seasonings' in saved).toBe(false)
+    expect('budgetPerDayCny' in saved).toBe(false)
   })
 
   it('已有档案时回填原值，改完再存不会丢字段', async () => {
@@ -128,6 +133,44 @@ describe('档案页', () => {
 
     await vi.waitFor(() => {
       expect(wrapper.text()).toContain('体重要填 25-300 kg')
+    })
+    expect(await getProfile()).toBeUndefined()
+  })
+
+  it('四项安全边界能存能回填：多行 / 顿号都认，没有忌口就填「无」（FR-1003）', async () => {
+    await saveProfile({ ...EXISTING, avoidFoods: ['香菜'], allergies: ['无'], equipment: ['杠铃', '哑铃'], mealMinutes: 25 })
+    const wrapper = await mountPage()
+
+    // 第 3 个多行框是「忌口」，第 4 个是「过敏」，第 5 个是「可用器材」
+    const areas = wrapper.findAll('textarea')
+    expect((areas[2].element as HTMLTextAreaElement).value).toBe('香菜')
+    expect((areas[3].element as HTMLTextAreaElement).value).toBe('无')
+    expect((areas[4].element as HTMLTextAreaElement).value).toBe('杠铃\n哑铃')
+    expect((inputFor(wrapper, '每餐时间(min)').element as HTMLInputElement).value).toBe('25')
+
+    await areas[2].setValue('香菜、内脏\n折耳根')
+    await areas[4].setValue('自重')
+    await inputFor(wrapper, '每餐时间(min)').setValue('15')
+    await button(wrapper, '保存档案').trigger('click')
+
+    await vi.waitFor(async () => {
+      expect((await getProfile())?.mealMinutes).toBe(15)
+    })
+    const saved = (await getProfile()) as ProfileRecord
+    expect(saved.avoidFoods).toEqual(['香菜', '内脏', '折耳根'])
+    expect(saved.equipment).toEqual(['自重'])
+  })
+
+  it('每餐时间的离谱输入被拦下，不写库（FR-1003）', async () => {
+    const wrapper = await mountPage()
+    await inputFor(wrapper, '年龄').setValue('30')
+    await inputFor(wrapper, '身高(cm)').setValue('175')
+    await inputFor(wrapper, '体重(kg)').setValue('75')
+    await inputFor(wrapper, '每餐时间(min)').setValue('600')
+    await button(wrapper, '保存档案').trigger('click')
+
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('每餐时间要填 5-180 分钟')
     })
     expect(await getProfile()).toBeUndefined()
   })

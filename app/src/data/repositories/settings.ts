@@ -14,6 +14,8 @@ export function defaultSettings(): SettingsRecord {
     mutedFields: [],
     // FR-1602：三项目自报数据默认都带给模型，用户可以在「今日指导」的预览里单独关掉
     shareRecovery: { sleep: true, energy: true, soreness: true },
+    // B 级生成式推荐默认关（FR-1003）：开关的读取与门禁见 `domain/recommend.ts`
+    recommendEnabled: false,
     updatedAt: Date.now()
   }
 }
@@ -22,7 +24,14 @@ export async function getSettings(): Promise<SettingsRecord> {
   const row = await db.settings.get(SINGLETON_KEY)
   // 老数据的提醒项里没有后来新增的那几项（T4.5 的「当天摄入」）：按 id 补齐后返回。
   // 只在这次读取时补，不顺手写库 —— 用户下次在设置页改动时才落盘（避免「只读也写库」）。
-  if (row) return { ...row, reminders: mergeReminders(row.reminders ?? []) }
+  if (row) {
+    return {
+      ...row,
+      // 老数据可能没有这个键：按「默认关」返回，不顺手写库（与提醒项的补齐同理）
+      recommendEnabled: row.recommendEnabled === true,
+      reminders: mergeReminders(row.reminders ?? [])
+    }
+  }
   const fresh = defaultSettings()
   await db.settings.put(toPlain(fresh))
   return fresh

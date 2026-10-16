@@ -5,8 +5,8 @@
 
 - 最后更新：2026-10-16
 - 应用版本：`0.1.0`（`app/package.json`）
-- 分支 / 最近提交：`main` / `110c810 feat: 设置收尾 / 免责声明 / 诊断导出 / 离线队列（T4.6）`
-- 质量基线（2026-10-16 实测）：`npm test` 53 文件 / 496 项（`npm run build` 随之通过）；**全量并行跑时有两个已知偶发失败**（`quick-log-page.spec.ts` 的草稿断言、`workspace-script.spec.ts` 那条跑 Python 的用例撞 5 秒默认超时），单独重跑即可，见 §8；`workspace-script.spec.ts` 没装 Python 时整组跳过；`npm run build`（含 `vue-tsc -b` 类型检查，**测试文件也在类型检查范围内**）通过
+- 分支 / 最近提交：`main` / `900c532 feat: 手改食物数值（FR-406）：/foods 内联编辑器 + 来源替换`
+- 质量基线（2026-10-16 实测）：`npm test` 54 文件 / 510 项（`npm run build` 随之通过）；**全量并行跑时有两个已知偶发失败**（`quick-log-page.spec.ts` 的草稿断言、`workspace-script.spec.ts` 那条跑 Python 的用例撞 5 秒默认超时），单独重跑即可，见 §8；`workspace-script.spec.ts` 没装 Python 时整组跳过；`npm run build`（含 `vue-tsc -b` 类型检查，**测试文件也在类型检查范围内**）通过
 
 ## 0. 三十秒速览
 
@@ -15,7 +15,7 @@
 | 阶段 0 | 地基：脚手架、PWA 接入（含安装引导）、Dexie schema + 仓储层、种子食物库 | ✅ 完成 |
 | 阶段 1 | 本地能力闭环：领域计算、三类记录页、当日汇总、趋势页 | ✅ 完成 |
 | 阶段 2 | 模型能力：配置与连通性、LLM 客户端、食物补全、自由文本 / 图片记录、澄清引擎、队列执行器 | 🟡 主体完成，2 处收尾未做（见 §3） |
-| 阶段 3 | 报告与指导：周报月报、每日指导（A 级）、校准向导、B 级推荐 | 🟡 报告（T3.1 - T3.3）、摘要 v2（T3.6）、每日指导（T3.7，见 §2.10）、校准向导（T3.5，见 §2.11）已完成；**推荐周计划取消**（T3.4），只剩 B 级推荐（T3.8，默认关）未做 |
+| 阶段 3 | 报告与指导：周报月报、每日指导（A 级）、校准向导、B 级推荐 | 🟡 报告（T3.1 - T3.3）、摘要 v2（T3.6）、每日指导（T3.7，见 §2.10）、校准向导（T3.5，见 §2.11）已完成；**推荐周计划取消**（T3.4）；B 级生成式推荐（T3.8）已动工：安全边界那一步（四项约束 + 默认关的开关）2026-10-16 落地（见 §2.19），剩下 `plan.training` / `plan.meal` 与 `/plan` 页未做 |
 | 阶段 4 | 数据治理：导入导出、快照回滚、食物库治理、提醒、设置 | ✅ 完成：导出 / 导入（T4.1，见 §2.12）、工作区文本导出（T4.2，见 §2.13）、快照回滚（T4.3，见 §2.14）、食物库治理（T4.4，见 §2.15）、提醒（T4.5，见 §2.16）、设置收尾（T4.6，见 §2.17）与手改食物数值（FR-406，见 §2.18）都已落地 —— **这一阶段没有欠账了** |
 
 一句话总结：**「配好档案与目标 → 用一句话或表单记一整天（含未知食物自动补全）→ 看当日汇总与趋势 →
@@ -26,7 +26,8 @@
 提醒也能用了（今日页的「今天还没记的」清单 + 应用打开时的本地通知），设置页把提醒的限制写清楚了，
 单位 / 周起始日 / 外观 / 「不再追问」名单都能自己调，免责声明在 `/about`、诊断信息与离线队列在 `/data`，
 食物库里模型给的数值也能用包装标签直接覆盖掉（FR-406），阶段 4 到此**全部收口、无欠账**；
-整份计划只剩 T3.8（B 级生成式推荐，默认关）这一件没做。
+整份计划只剩 T3.8（B 级生成式推荐，默认关）——它已经动工，安全边界（四项约束 + 门禁 + 默认关的开关）
+在 §2.19 落地，接着做 `plan.training` / `plan.meal` 与 `/plan` 页。
 
 ## 1. 文档地图
 
@@ -561,8 +562,32 @@ T4.4 留下的那笔欠账：模型给的六项数值是**估算**，手里有�
   （改完保存后行里是新数值 + 「手工」、漏填禁用保存并能取消、越界仍可保存）。
   口径与八条落地约定见设计文档 §4.2 的「实现补充」。
 
-> 阶段 4 到此**全部收口、没有欠账**。整份计划只剩阶段 3 的 **T3.8 B 级生成式推荐**（默认关，
-> 开启前必须先恢复忌口 / 过敏 / 可用器材 / 每餐时间四个约束字段，FR-1003）没做。
+### 2.19 T3.8 第一步：B 级推荐的安全边界（2026-10-16）
+
+阶段 4 收口之后剩下的那件大事是 **B 级生成式推荐**（FR-801 ~ FR-808，默认关）。它的第一个动作不是
+写推荐，而是先把**安全边界**补回来：推荐会给出「今天吃什么」，也就可能推荐出用户不能吃的东西。
+
+- **四项约束回到档案**（FR-1003）：`profile` 上恢复 `avoidFoods` / `allergies` / `equipment` /
+  `mealMinutes`，`/profile` 多一张「饮食与训练约束」卡片。口径是「已确认」——**没有忌口 / 过敏就填
+  「无」，不留空**：留空分不清「没有」和「还没填」，而这两者对应的动作正相反。
+  输入拆分认得换行 / 逗号 / 顿号 / 分号（`parseConstraintList`），去空去重保序。
+- **门禁是纯函数** `domain/recommend.ts`：`missingRecommendConstraints`（缺哪几项）/ 
+  `recommendConstraintsReady` / `isRecommendEnabled`（老数据没有这个键 = 关）/
+  `recommendConstraintLines`（拼成给模型看的行，缺项写「未填」而不是省略）/ `parseConstraintList`。
+- **开关默认关，而且四项没齐就打不开**：`/settings` 新增「生成式推荐（B 级）」卡片，`van-switch` 在
+  约束不全时是禁用的，并列出缺哪几项 + 一条去 `/profile` 的路；开了 / 关了都立刻落
+  `settings.recommendEnabled`。界面禁用只是顺手 —— 真正跑推荐的应用层还会再判一次。
+- **导出 / 导入不漏字段**：四项进了 `io/importPackage.ts` 的 `PROFILE_FIELDS`，
+  `recommendEnabled` 进了 `SETTINGS_FIELDS`；`profile.md` 多一节「饮食与训练约束」（填了才写，
+  front-matter 的键名一字不动，脚本照旧能读）。
+- 验收：`npm test` 54 文件 / 510 项、`npm run build` 通过。新用例 `recommend.spec.ts` 9 项
+  （四项全缺 / 只缺一部分 / 「无」算填过 / 空白与 0 不算填 / 拆分与去重 / 拼输入行 / 开关读法 /
+  设置默认关 / 档案存取 / `profile.md` 那一节），`profile-page.spec.ts` 增 2 项（约束能存能回填、
+  每餐时间的离谱输入被拦下），`settings-page.spec.ts` 增 3 项（默认关且禁用、缺哪项说哪项、
+  齐了能开关并落库）。口径见设计文档 §4.2 的「实现补充」。
+
+> 下一步（T3.8 第二步）：`plan.training` / `plan.meal` 两个任务 + `/plan` 页 + 按食物库**本地复算**
+> 推荐里的克数与营养合计（FR-806）+ 采购清单（FR-804）。契约见设计文档 §6.5 / §6.6。
 
 ## 3. 部分完成：有明确缺口（优先补这些）
 
@@ -576,7 +601,7 @@ T4.4 留下的那笔欠账：模型给的六项数值是**估算**，手里有�
 
 | 任务 | 要做的事 | 依赖 / 注意 | 验收 |
 | --- | --- | --- | --- |
-| T3.8 | **B 级生成式推荐（可选开关，默认关）** | 需求 M8 第二级：启用前**必须先恢复**忌口 / 过敏 / 可用器材 / 每餐时间四个约束字段（FR-1003 条件生效），否则不得开启 | 开关默认关；开启时约束字段必填且进输入 |
+| T3.8（第二步） | **`plan.training` / `plan.meal` + `/plan` 页**：按契约发缺口与约束，回来**本地复算**克数与营养（FR-806），给采购清单（FR-804） | 第一步（安全边界）已完成，见 §2.19：四项约束在档案里、开关默认关且四项没齐打不开；契约见设计文档 §6.5 / §6.6 | 开关关着时整条链路不可用；开着时输出动作 / 食谱清单，数值与本地库一致 |
 
 > T3.1 - T3.3（报告摘要 / 周报月报 + 数字守卫 / 报告页）已于 2026-10-15 完成，见 §2.7。
 > **T3.4（推荐周计划）已取消**（2026-10-16 范围调整，见 §2.9）。
@@ -585,7 +610,8 @@ T4.4 留下的那笔欠账：模型给的六项数值是**估算**，手里有�
 > `previousDigest` 带上上一期数字；报告页已显示这些数字。口径与三处有意收窄见设计文档 §6.4.1。
 > **T3.7（每日指导 A 级）已于 2026-10-16 完成**，见 §2.10；契约口径与九条落地约定见设计文档 §6.4.2 的「实现补充」。
 > **T3.5（校准向导）已于 2026-10-16 完成**，见 §2.11；契约口径见设计文档 §6.7 的「实现补充」。
-> 阶段 3 现在只剩 **T3.8 B 级推荐**（默认关、开启前必须先恢复约束字段）。
+> **T3.8 第一步（B 级推荐的安全边界）已于 2026-10-16 完成**，见 §2.19：四项约束回到档案、
+> 设置页开关默认关且**四项没齐打不开**（FR-1003）。只剩第二步：`plan.training` / `plan.meal` 与 `/plan` 页。
 
 ### 4.2 阶段 4：数据治理与打磨（P1-P2）
 
@@ -620,7 +646,8 @@ app/
     app/          启动流程（bootstrap：开库 + 写种子）、日期工具、设置、外观（theme）、图片压缩
     domain/       纯计算与领域类型 —— 无 IO、不依赖 Vue / Dexie（对拍测试直接打这里）；
                   foodName / foodAudit 是食物库的名称归一化与疑似重复判定；foodEdit / nutrientRange 是手改数值的
-                  解析与合理区间（区间与模型校验共用）；reminders 是提醒的判定、默认时间段与补记入口
+                  解析与合理区间（区间与模型校验共用）；reminders 是提醒的判定、默认时间段与补记入口；
+                  recommend 是 B 级推荐的安全边界（四项约束齐没齐、怎么拆、怎么拼成输入行）
     data/         Dexie schema（db.ts）、仓储层（repositories/）、种子数据（seed/）
     llm/          OpenAI 兼容客户端、错误分类、文本抽取、任务注册表与流水线、tasks/
     application/  用例层：本地优先、业务校验、落库编排（foodLibrary / foodResolve / foodAdmin / logParse / queue / report / coach / calibration / snapshot / reminders / notify / daySummary）
@@ -654,6 +681,7 @@ app/
 | 食物库治理（`/foods`） | `application/foodAdmin.ts` `buildFoodOverview` / `setDisabled` / `deleteFood` / `editFoodFacts`；分组在 `domain/foodAudit.ts`，页面是 `pages/FoodsPage.vue` |
 | 手改食物数值（FR-406） | `domain/foodEdit.ts` `draftOfFood` / `reviewFactsEdit` / `applyFacts`；用例是 `application/foodAdmin.ts` 的 `editFoodFacts`，落库走 `data/repositories/foods.ts` 的 `saveFood` |
 | 六项数值的合理区间 | `domain/nutrientRange.ts` `NUTRIENT_RANGES` / `rangeChecks`（模型校验与用户手改共用同一份） |
+| B 级推荐的安全边界（T3.8） | `domain/recommend.ts` `missingRecommendConstraints` / `recommendConstraintsReady` / `isRecommendEnabled` / `parseConstraintList` / `recommendConstraintLines`；档案字段在 `pages/ProfilePage.vue`，开关在 `pages/SettingsPage.vue` |
 | 未知食物落库 | `application/foodResolve.ts` `resolveFoods` / `toFood` |
 | 食物名称归一化 / 主名 | `domain/foodName.ts` `normalizeFoodName`（保留括号）/ `baseNameOf` / `looseFoodKey` |
 | 自由文本 → 草稿 | `application/logParse.ts` `parseLog` |
@@ -695,7 +723,7 @@ app/
 ```bash
 npm install
 npm run dev       # 本地开发服务器
-npm test          # 单元 / 对拍 / 组件测试（53 文件 / 496 项）
+npm test          # 单元 / 对拍 / 组件测试（54 文件 / 510 项）
 npm run build     # vue-tsc 类型检查 + 生产构建（产物 dist/）
 npm run preview   # 预览构建产物 —— 测 PWA 行为请用这个，不要用 dev
 npm run seed      # 从 ../data/foods.csv 重新生成内置食物库种子
@@ -846,14 +874,17 @@ npm run build
     `/about` 免责声明、`/data` 的离线队列界面与诊断信息导出 —— 阶段 4 到此收口。
 11. ~~FR-406 食物条目数值编辑 / 覆盖~~ —— 2026-10-16 已完成（见 §2.18）：`/foods` 每行的「改数值」，
     来源替换成「手工」并留痕，越界只提醒不拦。阶段 4 到此没有欠账了。
-12. **T3.8 B 级生成式推荐（默认关）** —— 整份计划剩下的最后一件：开启前必须先恢复忌口 / 过敏 /
-    可用器材 / 每餐时间四个约束字段（FR-1003 条件生效），否则不得开启。
+12. ~~T3.8 第一步：B 级推荐的安全边界~~ —— 2026-10-16 已完成（见 §2.19）：四项约束回到档案、
+    开关默认关且四项没齐打不开、导出 / 导入都不丢字段。
+13. **T3.8 第二步：`plan.training` / `plan.meal` 与 `/plan` 页** —— 整份计划剩下的最后一件。
+    按设计文档 §6.5 / §6.6 的契约发缺口与约束，回来按食物库**本地复算**（FR-806），
+    并给采购清单（FR-804）；开关关着时整条链路不可用。
 
 每一步都能独立验收；建议每完成一项就更新本文第 2 / 3 / 4 节的表格，以及 `docs/pwa-design.md` §13 的状态标记。
 
 ## 10. 交接自检清单
 
-- [ ] `cd app && npm install && npm test`（53 文件 / 496 项；`quick-log-page.spec.ts` 与 `workspace-script.spec.ts`
+- [ ] `cd app && npm install && npm test`（54 文件 / 510 项；`quick-log-page.spec.ts` 与 `workspace-script.spec.ts`
       偶发失败时重跑一次即可，见 §8）
 - [ ] `npm run build` 通过
 - [ ] `npm run preview` 能打开今日页，底部 tab 来回切换不卡死
@@ -897,6 +928,9 @@ npm run build
 - [ ] `/data`「离线队列」：列表能看到未完成 / 已完成的条目；点「不再自动重试」只删掉队列项（记录本身不动）；
       点「清理已完成」后已完成分组消失
 - [ ] `/data`「诊断信息导出」：下载到的 JSON 里**搜不到 apiKey**（连字段名都没有）、也没有任何食物 / 体重 / 档案内容，只有版本、表条数、模型地址与错误摘要
+- [ ] `/profile` 里「饮食与训练约束」四项填齐（没有忌口 / 过敏就填「无」）→ 回 `/settings`：
+      「生成式推荐」的开关从禁用变成可点，打开后刷新仍是开的；把「过敏」清空再保存，开关又打不开
+- [ ] 关着推荐开关时，`/profile` 的约束可以留空也不影响记录 / 报告（B 级是可选功能）
 - [ ] `/profile` 填一份档案 → `/targets` 用首次估算写入目标，并在「校准记录」里看到一行
 - [ ] 在 `/targets` 把热量改掉 200 kcal：确认卡片要出现「超过 ±150 kcal」与「样本可能不足」提示
 - [ ] 在 `/settings/model` 填入自己的 OpenAI 兼容接口，连通性测试通过

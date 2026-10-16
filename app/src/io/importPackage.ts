@@ -220,9 +220,14 @@ const PROFILE_FIELDS = [
   'trainingYears',
   'wakeTime',
   'sleepTime',
-  'conventions'
+  'conventions',
+  // T3.8：B 级推荐的四项安全边界（FR-1003），别在导入时把它们丢掉
+  'avoidFoods',
+  'allergies',
+  'equipment',
+  'mealMinutes'
 ] as const
-const SETTINGS_FIELDS = ['units', 'weekStart', 'theme', 'reminders', 'mutedFields', 'shareRecovery', 'lastBackupAt'] as const
+const SETTINGS_FIELDS = ['units', 'weekStart', 'theme', 'reminders', 'mutedFields', 'shareRecovery', 'recommendEnabled', 'lastBackupAt'] as const
 
 /** 某一天的摄入 / 训练该怎么处理：返回要写入的行；`undefined` = 整日跳过。 */
 function planByDate<T extends { date: string }>(

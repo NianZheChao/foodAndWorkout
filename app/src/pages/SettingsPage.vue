@@ -20,8 +20,10 @@ import {
   type NotificationSupport
 } from '@/application/notify'
 import { applyTheme, type ThemeChoice } from '@/app/theme'
+import { getProfile } from '@/data/repositories/profile'
+import { isRecommendEnabled, missingRecommendConstraints } from '@/domain/recommend'
 import { mergeReminders, reminderHint } from '@/domain/reminders'
-import type { ReminderSetting } from '@/domain/types'
+import type { ProfileRecord, ReminderSetting } from '@/domain/types'
 
 const SUPPORT_TEXT: Record<NotificationSupport, string> = {
   unsupported: '这台设备 / 浏览器不支持系统通知：只会有应用内提醒。',
@@ -34,6 +36,9 @@ const reminders = ref<ReminderSetting[]>([])
 const weekStart = ref<1 | 7>(1)
 const theme = ref<ThemeChoice>('auto')
 const mutedFields = ref<string[]>([])
+/** B 级推荐总开关与它的门禁（FR-1003）：四项约束在档案里 */
+const recommendEnabled = ref(false)
+const profile = ref<ProfileRecord>()
 const support = ref<NotificationSupport>('unsupported')
 const loaded = ref(false)
 
@@ -42,6 +47,9 @@ const THEME_CHOICES: { value: ThemeChoice; label: string }[] = [
   { value: 'light', label: '浅色' },
   { value: 'dark', label: '深色' }
 ]
+
+/** 还差哪几项约束（空数组 = 齐了，开关才能打开）。 */
+const missingConstraints = computed(() => missingRecommendConstraints(profile.value))
 
 const themeLabel = computed(
   () => THEME_CHOICES.find((item) => item.value === theme.value)?.label ?? '跟随系统'
@@ -56,11 +64,13 @@ const permissionButton = computed(() => {
 })
 
 async function load(): Promise<void> {
-  const settings = await getSettings()
+  const [settings, record] = await Promise.all([getSettings(), getProfile()])
   reminders.value = mergeReminders(settings.reminders ?? [])
   weekStart.value = settings.weekStart
   theme.value = settings.theme
   mutedFields.value = [...(settings.mutedFields ?? [])]
+  recommendEnabled.value = isRecommendEnabled(settings)
+  profile.value = record
   support.value = notificationSupport()
   loaded.value = true
 }
@@ -98,6 +108,22 @@ async function setTheme(value: ThemeChoice): Promise<void> {
   await saveSettings({ theme: value })
   applyTheme(value)
   showToast({ message: `外观：${themeLabel.value}`, position: 'bottom' })
+}
+
+/**
+ * B 级生成式推荐的总开关（T3.8 / FR-1003）。**四项约束没填齐就打不开**：
+ * 这不是界面上的小提示，而是「不能推荐出用户吃不了的东西」这条安全边界。
+ * 真正跑推荐的应用层还会再判一次（界面禁用只是顺手递个话）。
+ */
+async function setRecommend(value: boolean | number): Promise<void> {
+  const next = value === true || value === 1
+  if (next && missingConstraints.value.length) {
+    showToast({ message: `先去档案页补齐：${missingConstraints.value.join(' / ')}`, position: 'bottom' })
+    return
+  }
+  recommendEnabled.value = next
+  await saveSettings({ recommendEnabled: next })
+  showToast({ message: next ? '已开启生成式推荐（B 级）' : '已关闭生成式推荐', position: 'bottom' })
 }
 
 /** 恢复追问：把字段从名单里拿掉（FR-1103「可随时恢复」）。 */
@@ -148,6 +174,38 @@ async function restoreField(field: string): Promise<void> {
       <p class="muted">
         同一件事一天只会响一次；到了设定时间、而且那一项当天还没完成，才会通知（FR-1105）。
       </p>
+    </div>
+
+    <div class="card recommend-card">
+      <div class="card-head">
+        <h2 class="card-title">生成式推荐（B 级）</h2>
+        <span class="tag">{{ recommendEnabled ? '已开启' : '默认关' }}</span>
+      </div>
+      <p class="muted">
+        开启后才会出现「今天练什么 / 今天吃什么」这类<strong>具体清单</strong>（FR-801 / FR-802）。
+        它只读档案里的四项约束与本地摘要，不发送全量历史（FR-805），也不改你的热量目标（FR-807）。
+      </p>
+      <div class="actions">
+        <van-switch
+          :model-value="recommendEnabled"
+          size="22"
+          :disabled="!recommendEnabled && missingConstraints.length > 0"
+          @update:model-value="setRecommend"
+        />
+      </div>
+      <template v-if="missingConstraints.length">
+        <p class="muted warn-text">
+          开启前必须先补齐安全边界（FR-1003）：{{ missingConstraints.join(' / ') }} ——
+          否则可能出现「推荐了你不能吃的东西」。没有忌口 / 过敏就填「无」，别留空。
+        </p>
+        <div class="actions">
+          <van-button size="small" plain block @click="$router.push('/profile')">去档案页填写</van-button>
+        </div>
+      </template>
+      <p v-else class="muted">
+        四项约束已齐。推荐里的食材克数与营养合计会由本地按食物库<strong>重新算一遍</strong>（FR-806）。
+      </p>
+      <p class="muted">推荐不依赖食材库存，也不会问你「家里还有什么」（FR-803）。</p>
     </div>
 
     <div class="card">

@@ -7,9 +7,9 @@
  * （`domain/calibration.ts`），「不再追问的字段」直接写 `settings.mutedFields`
  * —— 澄清引擎读的就是它（`application/logParse.ts`）。
  *
- * 2026-10-16 起不再收「忌口 / 过敏 / 调味料 / 可用器材 / 每餐做饭时间」：这些字段唯一的消费者是
- * 饮食与训练推荐，而推荐功能已决定不做。数据模型里也一并删掉，避免「填了但没人读」的假功能。
- * 界面上不存在食材库存的入口（FR-1005）。
+ * 其中四项是「生成式推荐」（B 级，默认关）的**安全边界**（T3.8 / FR-1003）：忌口 / 过敏 /
+ * 可用器材 / 每餐时间。2026-10-16 的档案瘦身删掉过它们（当时判断不做推荐），B 级重新立项后按
+ * FR-1003 恢复；四项没填齐，设置页里那个开关就打不开。界面上不存在食材库存的入口（FR-1005）。
  */
 
 import { computed, onMounted, ref, shallowRef } from 'vue'
@@ -18,6 +18,7 @@ import { useRouter } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import { getProfile, saveProfile } from '@/data/repositories/profile'
 import { getSettings, saveSettings } from '@/data/repositories/settings'
+import { parseConstraintList } from '@/domain/recommend'
 import { isPlausibleWeight } from '@/domain/weight'
 import type { ProfileRecord } from '@/domain/types'
 
@@ -53,6 +54,10 @@ interface ProfileForm {
   wakeTime: string
   sleepTime: string
   conventionsText: string
+  avoidFoodsText: string
+  allergiesText: string
+  equipmentText: string
+  mealMinutes: string
 }
 
 function blankForm(): ProfileForm {
@@ -68,7 +73,11 @@ function blankForm(): ProfileForm {
     trainingYears: '',
     wakeTime: '',
     sleepTime: '',
-    conventionsText: DEFAULT_CONVENTIONS.join('\n')
+    conventionsText: DEFAULT_CONVENTIONS.join('\n'),
+    avoidFoodsText: '',
+    allergiesText: '',
+    equipmentText: '',
+    mealMinutes: ''
   }
 }
 
@@ -87,7 +96,11 @@ function syncForm(record: ProfileRecord): void {
     trainingYears: record.trainingYears === undefined ? '' : String(record.trainingYears),
     wakeTime: record.wakeTime ?? '',
     sleepTime: record.sleepTime ?? '',
-    conventionsText: (record.conventions ?? []).join('\n')
+    conventionsText: (record.conventions ?? []).join('\n'),
+    avoidFoodsText: (record.avoidFoods ?? []).join('\n'),
+    allergiesText: (record.allergies ?? []).join('\n'),
+    equipmentText: (record.equipment ?? []).join('\n'),
+    mealMinutes: record.mealMinutes === undefined ? '' : String(record.mealMinutes)
   }
 }
 
@@ -134,6 +147,12 @@ async function save(): Promise<void> {
     return
   }
 
+  const mealMinutes = form.value.mealMinutes.trim() ? Number(form.value.mealMinutes) : undefined
+  if (mealMinutes !== undefined && (!Number.isFinite(mealMinutes) || mealMinutes < 5 || mealMinutes > 180)) {
+    errorMessage.value = '每餐时间要填 5-180 分钟之间的数字（不清楚就留空）。'
+    return
+  }
+
   const record: ProfileRecord = {
     id: 'current',
     name: form.value.name.trim() || undefined,
@@ -148,6 +167,11 @@ async function save(): Promise<void> {
     wakeTime: form.value.wakeTime.trim() || undefined,
     sleepTime: form.value.sleepTime.trim() || undefined,
     conventions: toLines(form.value.conventionsText),
+    // 四项安全边界（FR-1003）：多行 / 逗号 / 顿号都认，去空去重
+    avoidFoods: parseConstraintList(form.value.avoidFoodsText),
+    allergies: parseConstraintList(form.value.allergiesText),
+    equipment: parseConstraintList(form.value.equipmentText),
+    mealMinutes,
     updatedAt: Date.now()
   }
   // 「不再追问」名单属于设置（澄清引擎读 settings.mutedFields），与档案分开存
@@ -223,6 +247,41 @@ async function save(): Promise<void> {
       <h2 class="card-title">不再追问的字段</h2>
       <van-field v-model="mutedFieldsText" type="textarea" rows="2" autosize label="" placeholder="一行一条，例如 油.grams" />
       <p class="muted">写进来的字段不会再生成澄清问题（DR-47）。这份名单存在设置里，澄清引擎直接读它。</p>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">饮食与训练约束</h2>
+      <p class="muted">
+        这四项是「生成式推荐」（B 级，默认关）的<strong>安全边界</strong>（FR-1003）：四项没填齐，
+        设置页里那个开关就打不开 —— 否则可能出现「推荐了你不能吃的东西」。没有忌口 / 过敏就填「无」，
+        别留空：留空分不清「没有」和「还没填」。
+      </p>
+      <van-field
+        v-model="form.avoidFoodsText"
+        type="textarea"
+        rows="2"
+        autosize
+        label="忌口"
+        placeholder="一行一条，例如 香菜 / 内脏；没有就填「无」"
+      />
+      <van-field
+        v-model="form.allergiesText"
+        type="textarea"
+        rows="2"
+        autosize
+        label="过敏"
+        placeholder="一行一条，例如 虾 / 花生；没有就填「无」"
+      />
+      <van-field
+        v-model="form.equipmentText"
+        type="textarea"
+        rows="2"
+        autosize
+        label="可用器材"
+        placeholder="一行一件，例如 杠铃 / 哑铃 / 单杠；只有自重就填「自重」"
+      />
+      <van-field v-model="form.mealMinutes" label="每餐时间(min)" type="number" placeholder="例如 20" />
+      <p class="muted">推荐只读这四项约束与本地摘要：不问你家里还有什么（FR-803 / FR-805）。</p>
     </div>
 
     <p class="muted">档案只参与首次目标估算；改完记得保存。目标值不在这里改，去「目标」页。</p>

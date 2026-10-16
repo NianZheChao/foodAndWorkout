@@ -369,6 +369,15 @@ export function renderProfileFile(profile: ProfileRecord): string {
   if (profile.trainingYears !== undefined) training.push(`- 训练年限：${fmtCell(profile.trainingYears)} 年`)
   pushSection(lines, '训练背景', training)
 
+  // 四项安全边界（T3.8 / FR-1003）：写在正文里给人和脚本看；机器读的那份在导出包里。
+  // 没填就不写这一节，免得导出文件里出现一堆空行。
+  const constraints: string[] = []
+  if (profile.avoidFoods?.length) constraints.push(`- 忌口：${profile.avoidFoods.join('、')}`)
+  if (profile.allergies?.length) constraints.push(`- 过敏：${profile.allergies.join('、')}`)
+  if (profile.equipment?.length) constraints.push(`- 可用器材：${profile.equipment.join('、')}`)
+  if (profile.mealMinutes) constraints.push(`- 每餐可投入时间：${fmtCell(profile.mealMinutes)} 分钟`)
+  pushSection(lines, '饮食与训练约束', constraints)
+
   pushSection(lines, '作息', [`- 起床 / 入睡时间：${profile.wakeTime || '-'} / ${profile.sleepTime || '-'}`])
   pushSection(lines, '记录口径约定', (profile.conventions ?? []).map((line) => `- ${line}`))
   return `${lines.join('\n')}\n`

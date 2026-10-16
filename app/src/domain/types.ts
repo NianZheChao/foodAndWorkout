@@ -364,10 +364,12 @@ export interface ProfileRecord {
    * 只放**会被读**的字段：性别 / 年龄 / 身高 / 体重 / 目标 / 训练水平供首次目标估算使用
    * （`domain/calibration.ts`）。
    *
-   * 2026-10-16 删掉了 `injuries` / `allergies` / `dietType` / `dailyCookMinutes` /
-   * `budgetPerDayCny` / `seasonings` / `equipment` / `mutedFields`：前七项的唯一消费者是
-   * 「饮食与训练推荐」，而推荐功能已决定不做；`mutedFields` 与设置里的名单重复，
-   * 澄清引擎读的是 `SettingsRecord.mutedFields`，只保留设置里那一份。
+   * 2026-10-16 的档案瘦身删掉过 `injuries` / `allergies` / `dietType` / `dailyCookMinutes` /
+   * `budgetPerDayCny` / `seasonings` / `equipment` / `mutedFields`（当时判断「不做推荐」）。
+   * 后来 B 级生成式推荐重新立项（T3.8），按 FR-1003 恢复其中四项作为**安全边界**：
+   * 忌口 / 过敏 / 可用器材 / 每餐时间，见下面四个字段。仍不恢复的是 `budgetPerDayCny`、
+   * `injuries`、`dietType`、`seasonings`（推荐输入里用不到）与 `mutedFields`（与设置里那份重复，
+   * 澄清引擎读的是 `SettingsRecord.mutedFields`）。
    * 老数据里残留这些键不影响读取（IndexedDB 允许多余字段）。
    */
   id: 'current'
@@ -384,6 +386,19 @@ export interface ProfileRecord {
   sleepTime?: string
   /** 记录口径约定（长期），如「不记饮水」 */
   conventions: string[]
+  /**
+   * 「推荐」的四项安全边界（T3.8 / FR-1003）。**四项齐了才能在设置页打开 B 级开关**
+   * （门禁在 `domain/recommend.ts`）。
+   *
+   * 口径是「已确认」：没有忌口 / 过敏就填「无」，**不留空** —— 留空既表示不了「没有」，
+   * 也看不出「还没填」，而分不清这两件事的推荐就可能把过敏源写进菜单。
+   * 老档案没有这几个键，读取时按空处理（`?? []`）。
+   */
+  avoidFoods?: string[]
+  allergies?: string[]
+  equipment?: string[]
+  /** 每餐能投入的分钟数；未填留空（不拿 0 顶替，DR-04） */
+  mealMinutes?: number
   updatedAt: number
 }
 
@@ -406,6 +421,11 @@ export interface SettingsRecord {
    * 关掉的字段既不进摘要聚合，也不进请求体；缺省（老数据）视为全开，见 `application/coach.ts` 的读法。
    */
   shareRecovery?: { sleep: boolean; energy: boolean; soreness: boolean }
+  /**
+   * B 级生成式推荐的总开关（T3.8 / FR-1003）：**默认关**，而且只有档案里四项约束填齐后
+   * 才能在设置页打开（门禁在 `domain/recommend.ts`）。老数据没有这个键 = 关。
+   */
+  recommendEnabled?: boolean
   lastBackupAt?: number
   updatedAt: number
 }

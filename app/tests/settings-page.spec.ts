@@ -15,6 +15,7 @@ import SettingsPage from '@/pages/SettingsPage.vue'
 import { routes } from '@/router'
 import { db } from '@/data/db'
 import { getSettings, saveSettings } from '@/data/repositories/settings'
+import { saveProfile } from '@/data/repositories/profile'
 import { REMINDER_DEFAULTS, REMINDER_IDS } from '@/domain/reminders'
 
 async function mountSettings(): Promise<{ wrapper: VueWrapper; router: Router }> {
@@ -31,8 +32,15 @@ async function mountSettings(): Promise<{ wrapper: VueWrapper; router: Router }>
   return { wrapper, router }
 }
 
+/** 提醒项的开关（T4.5）。T3.8 之后页面上多了一个推荐开关，所以按行收窄。 */
 function switches(wrapper: VueWrapper): VueWrapper[] {
-  return wrapper.findAll('.van-switch') as unknown as VueWrapper[]
+  return wrapper.findAll('.reminder-row .van-switch') as unknown as VueWrapper[]
+}
+
+function recommendSwitch(wrapper: VueWrapper): VueWrapper {
+  const found = wrapper.find('.recommend-card .van-switch')
+  if (!found.exists()) throw new Error('找不到推荐开关')
+  return found as unknown as VueWrapper
 }
 
 function button(wrapper: VueWrapper, label: string) {
@@ -191,5 +199,76 @@ describe('设置页 · 偏好与名单（T4.6）', () => {
     await vi.waitFor(() => {
       expect(router.currentRoute.value.path).toBe('/about')
     })
+  })
+})
+
+describe('设置页 · 生成式推荐开关（T3.8 / FR-1003）', () => {
+  const CONSTRAINT_PROFILE = {
+    id: 'current' as const,
+    sex: 'male' as const,
+    age: 30,
+    heightCm: 175,
+    weightKg: 75,
+    goal: '减脂' as const,
+    trainingLevel: '新手' as const,
+    conventions: [],
+    avoidFoods: ['香菜'],
+    allergies: ['无'],
+    equipment: ['杠铃'],
+    mealMinutes: 20,
+    updatedAt: Date.now()
+  }
+
+  it('默认关，且四项约束没填齐时开关是禁用的、点也点不开', async () => {
+    const { wrapper } = await mountSettings()
+    expect(wrapper.text()).toContain('默认关')
+    expect(wrapper.text()).toContain('忌口')
+    expect(recommendSwitch(wrapper).classes()).toContain('van-switch--disabled')
+
+    await recommendSwitch(wrapper).trigger('click')
+    await flushPromises()
+    expect((await getSettings()).recommendEnabled).toBe(false)
+    expect(wrapper.text()).toContain('开启前必须先补齐安全边界')
+  })
+
+  it('缺哪几项就说哪几项，并留一条去档案页的路', async () => {
+    await saveProfile({ ...CONSTRAINT_PROFILE, allergies: [], equipment: [], mealMinutes: undefined })
+    const { wrapper, router } = await mountSettings()
+
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('开启前必须先补齐安全边界')
+    })
+    const text = wrapper.text()
+    expect(text).toContain('过敏')
+    expect(text).toContain('可用器材')
+    expect(text).toContain('每餐时间')
+    expect(text).not.toContain('四项约束已齐')
+
+    await button(wrapper, '去档案页填写').trigger('click')
+    await vi.waitFor(() => {
+      expect(router.currentRoute.value.path).toBe('/profile')
+    })
+  })
+
+  it('四项齐了就能打开，并且落库；再关一次也落库（FR-1003）', async () => {
+    await saveProfile(CONSTRAINT_PROFILE)
+    const { wrapper } = await mountSettings()
+
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('四项约束已齐')
+    })
+    expect(recommendSwitch(wrapper).classes()).not.toContain('van-switch--disabled')
+
+    await recommendSwitch(wrapper).trigger('click')
+    await vi.waitFor(async () => {
+      expect((await getSettings()).recommendEnabled).toBe(true)
+    })
+    expect(recommendSwitch(wrapper).classes()).toContain('van-switch--on')
+
+    await recommendSwitch(wrapper).trigger('click')
+    await vi.waitFor(async () => {
+      expect((await getSettings()).recommendEnabled).toBe(false)
+    })
+    expect(recommendSwitch(wrapper).classes()).not.toContain('van-switch--on')
   })
 })
