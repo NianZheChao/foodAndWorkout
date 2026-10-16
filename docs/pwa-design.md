@@ -1322,10 +1322,16 @@ tests/
 scripts/
   gen-seed.mjs         从 data/foods.csv 生成 foods.seed.json
   gen-expected.mjs     调用 nutrition.py 生成对拍期望值（含临时目录里的合成 TDEE 样本）
+  deploy-pages.mjs     发布到部署仓库（GitHub Pages）：构建带 base → 同步产物 → 提交推送
 ```
 
 构建与质量：`vite build` 产出纯静态 `dist/`；启用 TypeScript strict（含 `noUnusedLocals`）；
 提交前跑 `npm run expected`（口径没变时可跳过）与 `npm test`。ESLint + Prettier 尚未接入。
+
+分发：产物托管在独立仓库（`npm run deploy`，见根 `README.md` 的「部署与分发」）。路径前缀只由构建时的
+`base` 决定 —— manifest 的 `scope` / `start_url` / 图标与 Workbox 的 `navigateFallback` 全写**相对**地址，
+所以根路径与子路径（GitHub Pages 项目页）共用同一份配置；`404.html` 由部署脚本从 `index.html` 复制，
+用来做 GitHub Pages 的 SPA 回退。
 
 ---
 

@@ -17,25 +17,28 @@ export default defineConfig({
         short_name: '薄肌计划',
         description: '个人减脂增肌记录与决策工具',
         lang: 'zh-CN',
-        start_url: '/today',
-        scope: '/',
+        // manifest 里的地址一律写**相对**的（不带前导斜杠）：它们按 manifest 自己的位置解析，
+        // 于是根路径部署（`/`）与子路径部署（GitHub Pages 项目页 `/foodAndWorkout_deploy/`）
+        // 用的是同一份 manifest —— 见 README 的「部署与分发」。
+        start_url: 'today',
+        scope: './',
         display: 'standalone',
         background_color: '#ffffff',
         theme_color: '#2f7d5b',
         icons: [
-          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
-          { src: '/icons/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
+          { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'icons/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
         ],
         shortcuts: [
-          { name: '记一餐', url: '/log/diet' },
-          { name: '记体重', url: '/log/body' },
-          { name: '今日汇总', url: '/summary' }
+          { name: '记一餐', url: 'log/diet' },
+          { name: '记体重', url: 'log/body' },
+          { name: '今日汇总', url: 'summary' }
         ]
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-        navigateFallback: '/index.html',
+        navigateFallback: 'index.html',
         // 模型请求一律 network-only，不做任何缓存
         runtimeCaching: []
       },

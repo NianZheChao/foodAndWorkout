@@ -8,6 +8,9 @@
 - 改了确定性计算的口径或记录文件解析：先 `npm run expected` 重生成对拍期望值，再 `npm test`，
   并同步更新 `docs/pwa-design.md` §5.2。
 - 测 PWA 行为用 `npm run preview`（`npm run dev` 里 Service Worker 不参与）。
+- 分发用 `npm run deploy`（`app/` 下）：构建带 Pages 的 `base`，把 `dist/` 推到**部署仓库**
+  `NianZheChao/foodAndWorkout_deploy`（产物不进本体仓库，`.gitignore` 已忽略 `dist/`）。
+  脚本 `app/scripts/deploy-pages.mjs`；路径前缀只由 `base` 决定，manifest 与 SW 里都是相对地址。
 
 ## 隐私与数据
 

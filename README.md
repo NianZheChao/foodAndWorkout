@@ -33,17 +33,40 @@ npm run preview   # 预览构建产物；测 PWA 行为必须用它，dev 模式
 
 ## 部署与分发
 
+线上地址：**https://nianzhechao.github.io/foodAndWorkout_deploy/**（`main` 的产物即最新版）。
+
+产品给使用者的是**一个网址**：iPhone 用 Safari 打开 → 「分享 → 添加到主屏」，装完就是独立窗口、
+离线可用（Service Worker 预缓存全部静态资源）。数据只存在使用者自己的浏览器里，服务器不留任何东西。
+
+### 怎么发
+
+```bash
+cd app
+npm run deploy          # 类型检查 + 构建（base=/foodAndWorkout_deploy/）+ 推到部署仓库
+npm run deploy -- --dry-run   # 只构建与准备，看清会动哪些文件
+```
+
+- 部署落在**独立仓库** `NianZheChao/foodAndWorkout_deploy`（只装产物，不进本体仓库的历史）；
+  脚本是 `app/scripts/deploy-pages.mjs`，一次发布一个提交，要回滚就回滚到上一个提交。
+- 产物里额外放两个托管侧要的文件：`.nojekyll`（别让 Jekyll 吃掉下划线开头的文件）与
+  `404.html`（SPA 回退，见下）。
+- GitHub Pages 设置（**一次性**，只在新仓库第一次发布前做）：Settings → Pages →
+  Source = `Deploy from a branch`，分支 `main`，目录 `/ (root)`。
+
+### 换托管（或自有域名）要动的地方
+
 构建产物是纯静态文件，但有三条硬要求：
 
 1. **HTTPS**：Service Worker 与「添加到主屏」都要求安全上下文；局域网 `http://192.168.x.x` 装不上。
-2. **域名根路径**：manifest 的 `scope` 是 `/`、`start_url` 是 `/today`，产物里的资源也都是
-   `/assets/...` 这样的根绝对地址。托管在子路径（例如 GitHub Pages 的项目页 `/repo/`）需要先改
-   `app/vite.config.ts` 的 `base` 与 manifest。
-3. **SPA 回退**：从主屏冷启动会直接请求 `/today`，服务器必须把未知路径回退到 `index.html`
-   （Netlify / Cloudflare Pages 在 `_redirects` 里写一行 `/* /index.html 200`）。
+2. **路径前缀与 base 一致**：Vite 的资源地址由 `base` 决定（`npm run deploy -- --base=/`、或
+   `npm run build -- --base=/xxx/`）。manifest 与 Service Worker 里的地址全是相对路径，
+   scope / start_url / precache 会跟着站点路径自动对上，**不需要再改 `vite.config.ts`**。
+3. **SPA 回退**：从主屏冷启动会直接请求 `/today`，服务器要把未知路径回退到 `index.html`。
+   GitHub Pages 靠上传的 `404.html`（部署脚本自动生成）；Netlify / Cloudflare Pages 在
+   `_redirects` 里写一行 `/* /index.html 200`。
 
-满足这三条后，把 `app/dist/` 上传到任意静态托管即可（Netlify Drop、Cloudflare Pages 直接上传最省事）。
-iPhone 上必须用 **Safari** 打开，再「分享 → 添加到主屏」；装完就是独立窗口，首次加载后离线可用。
+任何静态托管都可以放 `app/dist/`（Netlify Drop、Cloudflare Pages 直接上传最省事），
+iPhone 上必须用 **Safari** 打开再「添加到主屏」。
 
 ## 质量手段：与脚本对拍
 

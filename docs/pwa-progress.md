@@ -27,7 +27,8 @@
 单位 / 周起始日 / 外观 / 「不再追问」名单都能自己调，免责声明在 `/about`、诊断信息与离线队列在 `/data`，
 食物库里模型给的数值也能用包装标签直接覆盖掉（FR-406），阶段 4 到此**全部收口、无欠账**；
 整份计划的最后一件 T3.8（B 级生成式推荐，默认关）也在 §2.19（安全边界）与 §2.20（两个任务 + `/plan` 页）
-落地了 —— **阶段 0 到阶段 4 全部完成，没有欠账**。B 级推荐按 FR-1003 保持默认关，要到
+落地了 —— **阶段 0 到阶段 4 全部完成，没有欠账**；计划收口后又补了两件「怎么用起来」的事：
+token 预算告警（T2.5，见 §2.21）与**分发**（`npm run deploy` 发到 GitHub Pages，见 §2.22）。B 级推荐按 FR-1003 保持默认关，要到
 「设置 → 生成式推荐」显式打开、且档案里四项约束填齐之后才会出现「今天练什么 / 今天吃什么」。
 
 ## 1. 文档地图
@@ -658,6 +659,31 @@ T4.4 留下的那笔欠账：模型给的六项数值是**估算**，手里有�
   `budget-confirm.spec.ts`（3：文案带估算与预算 / 取消与关窗都算不发 / 不足 1000 不写成 0.4k）。
   口径见设计文档 §6.2 / §6.9 与 §13 的 T2.5 行。
 
+### 2.22 分发：GitHub Pages（2026-10-16）
+
+计划内的事做完之后，把「怎么给使用者」补上了：**给他一个网址**，iPhone 用 Safari 打开、
+「分享 → 添加到主屏」，装完就是独立窗口、离线可用。没有账号、没有服务器、没有上架流程。
+
+- **产物放独立仓库** `NianZheChao/foodAndWorkout_deploy`（站点
+  `https://nianzhechao.github.io/foodAndWorkout_deploy/`）。理由是这个仓库只放应用本体与验收基准，
+  `dist/` 本来就在 `.gitignore` 里；部署仓库只装产物、一次发布一个提交，回滚就是回滚到上一个提交。
+- **`npm run deploy`**（`app/scripts/deploy-pages.mjs`）：类型检查 → 带 `base` 构建 →
+  在系统临时目录里同步部署仓库（清空工作区再拷产物，上一版删掉的文件不会留在站点上）→
+  提交推送。`--dry-run` 能先看清会动哪些文件，`--no-build` 复用现有产物，`--base=/` 留给自有域名。
+- **路径前缀只由 `base` 决定**：manifest 的 `scope` / `start_url` / 图标、快捷方式与 Workbox 的
+  `navigateFallback` 全改成**相对地址**（按 manifest / SW 自己的位置解析），于是根路径部署与
+  子路径部署共用同一份配置 —— 不再需要「托管到子路径就得改 `vite.config.ts`」。
+- **两个托管侧补丁文件**（脚本自动生成）：`.nojekyll`（GitHub Pages 默认拿 Jekyll 处理分支内容，
+  没有它会丢掉下划线开头的文件）与 `404.html`（就是 `index.html` 的副本，SPA 回退：
+  从主屏冷启动会直接请求 `/today`，GitHub Pages 把未知路径交给 404.html，路由照样接得上）。
+- **验收（本轮实测）**：`npx vite preview --base=/foodAndWorkout_deploy/` 下 `/`、`/today`、
+  `/reports/rep_x`（SPA 回退）、`manifest.webmanifest`、`sw.js`、`icons/icon-192.png` 全部 200；
+  产物里的资源地址、`registerSW.js` 的 scope、SW 的 precache 清单与 `createHandlerBoundToURL`
+  都指向子路径。`npm test` 59 文件 / 558 项、`npm run build`（根路径 base）照旧通过。
+- **要使用者做一次的**：部署仓库 Settings → Pages → Source = `Deploy from a branch`，
+  分支 `main`、目录 `/ (root)`。设置没法由脚本代劳（需要仓库管理权限的 token）。
+- 口径写在根 `README.md` 的「部署与分发」与设计文档 §12；`AGENTS.md` 的命令区也加了一行。
+
 ## 3. 部分完成：有明确缺口（优先补这些）
 
 | 编号 | 已实现 | 缺什么 | 建议落点 |
@@ -735,7 +761,7 @@ app/
                   markdown/ 记录文件解析与导出（record / export）
     pages/        页面（含 AboutPage：免责声明与版本、PlanPage：B 级推荐清单）；components/ 共享组件；router/ 路由；store/ Pinia 会话态
   tests/          单元 / 对拍 / 组件测试（fixtures/ 与 helpers/ 同级）
-  scripts/        构建期脚本：gen-seed.mjs / gen-expected.mjs / gen-icons.mjs
+  scripts/        构建期脚本：gen-seed.mjs / gen-expected.mjs / gen-icons.mjs / deploy-pages.mjs（发布）
 ```
 
 ### 5.2 关键函数索引（接手时按名字搜即可）
@@ -770,6 +796,7 @@ app/
 | 食物名称归一化 / 主名 | `domain/foodName.ts` `normalizeFoodName`（保留括号）/ `baseNameOf` / `looseFoodKey` |
 | 自由文本 → 草稿 | `application/logParse.ts` `parseLog` |
 | 待办队列重放 | `application/queue.ts` `runQueue`（启动 / 联网时驱动） |
+| 发布到 GitHub Pages（分发） | `scripts/deploy-pages.mjs`（`npm run deploy`）；路径前缀靠 `vite build --base=`，manifest / SW 里都是相对地址 |
 | 报告摘要（模型输入） | `domain/reportDigest.ts` `buildReportDigest` / `periodOf` / `coverageWarning` |
 | 报告数字守卫与门禁 | `domain/reportGuard.ts` `flagUnknownNumbers` / `applyCalibrationGate` / `applyCoverageGate` |
 | 报告生成与落库 | `application/report.ts` `buildDigest` / `generateReport` / `saveEditedContent` |
@@ -810,6 +837,7 @@ npm run dev       # 本地开发服务器
 npm test          # 单元 / 对拍 / 组件测试（59 文件 / 558 项）
 npm run build     # vue-tsc 类型检查 + 生产构建（产物 dist/）
 npm run preview   # 预览构建产物 —— 测 PWA 行为请用这个，不要用 dev
+npm run deploy    # 构建（GitHub Pages 的 base）+ 推到部署仓库（§2.22；--dry-run 可先看）
 npm run seed      # 从 ../data/foods.csv 重新生成内置食物库种子
 npm run expected  # 调用 ../scripts/nutrition.py 重新生成对拍期望值
 npm run icons     # 重新生成 PWA 图标

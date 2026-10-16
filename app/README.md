@@ -19,7 +19,11 @@ npm run dev      # 本地开发
 npm test         # 单元测试
 npm run build    # 类型检查 + 生产构建（产物在 dist/）
 npm run preview  # 预览构建产物
+npm run deploy   # 构建（Pages 的 base）+ 推到部署仓库，见根 README「部署与分发」
 ```
+
+`npm run deploy` 的细节（子路径 base、`.nojekyll` 与 `404.html`、部署仓库与回滚）见根 `README.md`
+的「部署与分发」，以及 `scripts/deploy-pages.mjs` 的文件头注释。
 
 ## 与脚本对拍（核心质量手段）
 

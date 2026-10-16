@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
+    "build:pages": "vue-tsc -b && vite build --base=/foodAndWorkout_deploy/",
     "preview": "vite preview",
+    "deploy": "node scripts/deploy-pages.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "seed": "node scripts/gen-seed.mjs",
