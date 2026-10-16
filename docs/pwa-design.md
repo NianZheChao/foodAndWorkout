@@ -962,7 +962,7 @@ interface LlmTask<In, Out> {
 | `/targets` | 目标 | 校准记录表 |
 | `/calibration` | 校准向导 | 本地数字 + AI 复核；幅度 / 频率 / 样本门禁，采纳才写目标（§6.7 / T3.5） |
 | `/profile` | 档案 | |
-| `/settings` | 设置 | 提醒、单位、外观、不再追问 |
+| `/settings` | 设置 | 提醒（T4.5：开关 / 时间 / 通知权限 / 限制说明 / 模型设置入口）；单位、外观、不再追问名单还欠（T4.6） |
 | `/settings/model` | 模型设置 | URL / token / 连通性 / 用量 |
 | `/data` | 数据 | 导出 / 导入 JSON（含预演与三种冲突策略，T4.1）、工作区文本导出（T4.2）、快照与单日回滚（T4.3）+ 存储占用；离线队列界面待补 |
 
@@ -1121,6 +1121,24 @@ Pinia 只放**会话态与派生态**：
 
 `/settings` 页需明确写出这条限制，避免用户以为「设了时间就一定会响」。
 
+**实现补充（2026-10-16 落地，T4.5）**：
+
+- **判定是纯函数**（`domain/reminders.ts`）：`pendingReminders` 只问「今天还没完成的事」，`dueReminders` 再加一道
+  「已经过了设定时间」—— 前者给应用内提醒，后者给本地通知。事实（星期几、这一周是否收尾、本月是否最后一天、
+  今天有没有称重 / 记一餐 / 生成报告）由 `application/reminders.ts` 的 `buildReminderState` 查库凑出，
+  **两条链路共用同一份事实**：否则会出现「卡片说还没称重、通知说你已经称过」这种自相矛盾。
+- **五项与默认时间**：晨起称重 09:00 / 睡前称重 22:30 / 当天摄入还没记完 20:00 / 周末生成周报 20:00 /
+  月初生成月报 20:00。默认值只有一份（`REMINDER_DEFAULTS`）；`settings.reminders` 里缺的项按 id 补
+  （`mergeReminders`，**只读时补、不写库**，用户改过的时间与开关原样保留）。
+- **「哪一天算这一周的最后一天」跟着 `settings.weekStart` 走**；报告口径仍固定按周一起算（§6.4）。两者不冲突：
+  前者决定「什么时候提醒」，后者决定「报告算哪一段」。
+- **通知链路**（`application/notify.ts`）每次实时读 `Notification.permission`（不缓存 —— 用户去浏览器设置里
+  改回来能立刻生效）；「同一事项一天内不重复催」记在本机 `meta.reminderNotified`（不进导出包）。应用打开
+  期间每分钟检查一次，并在 `visibilitychange` 回到前台时补一次（移动端后台会冻结定时器，只靠 `setInterval`
+  会漏掉到点的那一分钟）。
+- **没授权 / 不支持时整条链路静默跳过**，应用内提醒照旧（FR-1104）：今日页顶部的「今天还没记的」卡片与
+  `/settings` 的提醒清单都不依赖任何系统权限。
+
 ---
 
 ## 10. 错误处理与可观测性
@@ -1172,6 +1190,7 @@ src/
   app/                 启动、路由、全局布局、错误边界
   domain/              纯计算（§5.1），无 IO
     foodAudit.ts       食物库治理的本地判定（疑似重复分组、数值一致）
+    reminders.ts       提醒判定（未完成项 / 到点判定 / 默认项补齐 / 补记入口，纯函数）
   data/
     db.ts              Dexie schema 与版本迁移
     repositories/      days / intake / workout / foods / reports / targets / profile / settings / snapshots
@@ -1189,6 +1208,8 @@ src/
     foodResolve.ts     food.resolve 应用层（缓存命中 / 范围与宏量校验 / 去重 / 失败入队）
     logParse.ts        log.parse 应用层（草稿 + 澄清清单 + 失败保原文）
     snapshot.ts        快照与单日回滚（自动快照 / 整天替换 / 回滚前再拍一张）
+    reminders.ts       提醒的事实来源（查库凑星期 / 当天记录 / 报告，判定交给 domain）
+    notify.ts          本地通知（权限能力探测 + 一天只弹一次 + 应用内每分钟检查）
   io/
     markdown/record.ts 记录文件解析（front-matter、章节、表格、组次文本）
     markdown/export.ts 导出回 Markdown / CSV（记录 + 档案 + 目标 + 食物库，含 AUTO 区块）
@@ -1197,7 +1218,7 @@ src/
     workspaceExport.ts 工作区文本导出（读库 + 打包成单个文本包）
     snapshot.ts        日快照载荷格式与结构校验（回滚前必须先过这里）
   ui/
-    pages/             今日 / 记录 hub（饮食·训练·身体）/ 当日汇总（其余先占位）
+    pages/             今日 / 记录 hub（饮食·训练·身体）/ 汇总 / 趋势 / 报告 / 食物库 / 设置（阶段 4 起无占位页）
     components/        DateNav 等共享组件
     composables/ charts/  （阶段 3 接入）
   store/               Pinia（会话态与派生态，写操作后统一重算并落库汇总）
@@ -1274,7 +1295,7 @@ scripts/
 | T4.2 | 工作区文本导出（records / foods.csv / profile / targets） | ✅ 2026-10-16 完成：`io/markdown/export.ts`（记录 / CSV / 档案 / 目标渲染，含本地算的 AUTO 区块）+ `io/workspaceExport.ts`（读库、按内容排序、打包成单个文本包）+ `/data` 的「导出为工作区格式」卡片；`tests/workspace-script.spec.ts` 把导出结果摊进临时工作区**真跑** `check --all`（0 个问题）并逐日比对我们与脚本写的 AUTO 区块。口径见 §7.2 的「实现补充」 |
 | T4.3 | 快照与单日回滚 | ✅ 2026-10-16 完成：`data/repositories/snapshots.ts`（存取 + 保留上限）+ `io/snapshot.ts`（载荷与手写校验）+ `application/snapshot.ts`（自动快照 / 整天替换回滚）+ `/data` 的「快照与回滚」卡片；自动快照挂在「删单条记录」与「导入覆盖 / 合并之前」。口径见 §4.3 的「实现补充」 |
 | T4.4 | 食物库治理（来源筛选、疑似重复、停用） | ✅ 2026-10-16 完成：`domain/foodAudit.ts`（疑似重复分组 / 数值一致判定）+ `application/foodAdmin.ts`（概况、停用、删除保护）+ `pages/FoodsPage.vue`（`/foods`）。验收「被引用的条目不可删除」由 `foods-page.spec.ts`（按钮禁用）与 `food-admin.spec.ts`（业务规则拒绝并说明几条记录）两处钉住。口径见 §4.2 的「实现补充」；**FR-406 编辑数值仍未做** |
-| T4.5 | 提醒方案落地（应用内提醒 + 能力探测的本地通知） | 打开应用能看到当天未完成项；系统支持时按设定时间通知；设置页写明限制 |
+| T4.5 | 提醒方案落地（应用内提醒 + 能力探测的本地通知） | ✅ 2026-10-16 完成：`domain/reminders.ts`（纯判定）+ `application/reminders.ts`（查库凑事实）+ `application/notify.ts`（权限探测 / 一天只弹一次 / 前台每分钟检查）+ `/settings` 真页面（开关 / 时间 / 权限 / 限制说明）。今日页顶部「今天还没记的」卡片与它共用同一份判定。口径见 §9.4 的「实现补充」 |
 | T4.6 | 设置、免责声明、诊断信息导出 | 需求 §9 与 FR-1608 可验 |
 
 ---

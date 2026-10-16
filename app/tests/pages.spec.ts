@@ -61,10 +61,12 @@ describe('页面挂载（阶段 1 已落地的路由）', () => {
     '/coach',
     '/reports',
     '/reports/rep_missing',
+    '/foods',
     '/targets',
     '/calibration',
     '/profile',
     '/data',
+    '/settings',
     '/settings/model'
   ])(
     '%s 能挂载并渲染出页面标题',
@@ -209,7 +211,7 @@ describe('导航可达性（二级页面不能是孤岛）', () => {
     expect(router.currentRoute.value.path).toBe('/settings/model')
   })
 
-  it('底部 tab 的「设置」页给出模型设置入口（设置页整体还没做）', async () => {
+  it('底部 tab 的「设置」页给出模型设置入口', async () => {
     const { wrapper, router } = await mountApp('/settings')
     expect(wrapper.find('.page-title').text()).toBe('设置')
     await button(wrapper, '模型设置').trigger('click')

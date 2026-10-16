@@ -59,10 +59,10 @@ describe('导航可达性（静态扫描）', () => {
     expect(literals.has(path), `没有任何页面 / 组件链接到 ${path}`).toBe(true)
   })
 
-  it('模型设置（/settings/model）在两处可达：今日页「更多」与设置页占位', () => {
+  it('模型设置（/settings/model）在两处可达：今日页「更多」与设置页', () => {
     const today = readFileSync(join(SRC, 'pages', 'TodayPage.vue'), 'utf8')
-    const placeholder = readFileSync(join(SRC, 'pages', 'PlaceholderPage.vue'), 'utf8')
+    const settings = readFileSync(join(SRC, 'pages', 'SettingsPage.vue'), 'utf8')
     expect(today).toContain("'/settings/model'")
-    expect(placeholder).toContain("'/settings/model'")
+    expect(settings).toContain("'/settings/model'")
   })
 })

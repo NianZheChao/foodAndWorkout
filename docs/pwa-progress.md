@@ -5,8 +5,8 @@
 
 - 最后更新：2026-10-16
 - 应用版本：`0.1.0`（`app/package.json`）
-- 分支 / 最近提交：`main` / `30126ca feat: 快照与单日回滚（T4.3）+ /data 快照卡片 + 导入/删除前自动快照`
-- 质量基线（2026-10-16 实测）：`npm test` 47 文件 / 435 项（**`quick-log-page.spec.ts` 仍是偶发失败，7 次重跑里出现 3 次，见 §8**；`workspace-script.spec.ts` 没装 Python 时整组跳过）；`npm run build`（含 `vue-tsc -b` 类型检查，**测试文件也在类型检查范围内**）通过
+- 分支 / 最近提交：`main` / `af94ef8 feat: 食物库治理（T4.4）：/foods 页 + 来源/分类筛选 + 疑似重复分组 + 停用与删除保护`
+- 质量基线（2026-10-16 实测）：`npm test` 49 文件 / 461 项（`npm run build` 随之通过）；**全量并行跑时有两个已知偶发失败**（`quick-log-page.spec.ts` 的草稿断言、`workspace-script.spec.ts` 那条跑 Python 的用例撞 5 秒默认超时），单独重跑即可，见 §8；`workspace-script.spec.ts` 没装 Python 时整组跳过；`npm run build`（含 `vue-tsc -b` 类型检查，**测试文件也在类型检查范围内**）通过
 
 ## 0. 三十秒速览
 
@@ -16,14 +16,15 @@
 | 阶段 1 | 本地能力闭环：领域计算、三类记录页、当日汇总、趋势页 | ✅ 完成 |
 | 阶段 2 | 模型能力：配置与连通性、LLM 客户端、食物补全、自由文本 / 图片记录、澄清引擎、队列执行器 | 🟡 主体完成，2 处收尾未做（见 §3） |
 | 阶段 3 | 报告与指导：周报月报、每日指导（A 级）、校准向导、B 级推荐 | 🟡 报告（T3.1 - T3.3）、摘要 v2（T3.6）、每日指导（T3.7，见 §2.10）、校准向导（T3.5，见 §2.11）已完成；**推荐周计划取消**（T3.4），只剩 B 级推荐（T3.8，默认关）未做 |
-| 阶段 4 | 数据治理：导入导出、快照回滚、食物库治理、提醒、设置 | 🟡 导出 / 导入（T4.1，见 §2.12）、工作区文本导出（T4.2，见 §2.13）、快照回滚（T4.3，见 §2.14）与食物库治理（T4.4，见 §2.15）已完成；提醒（T4.5）、设置（T4.6）未做 |
+| 阶段 4 | 数据治理：导入导出、快照回滚、食物库治理、提醒、设置 | 🟡 导出 / 导入（T4.1，见 §2.12）、工作区文本导出（T4.2，见 §2.13）、快照回滚（T4.3，见 §2.14）、食物库治理（T4.4，见 §2.15）与提醒（T4.5，见 §2.16）已完成；设置页的收尾（T4.6：单位 / 外观 / 不再追问 / 免责声明）未做 |
 
 一句话总结：**「配好档案与目标 → 用一句话或表单记一整天（含未知食物自动补全）→ 看当日汇总与趋势 →
 每天拿一份带依据的 AI 指导 → 用近 4 周的记录做一次校准 → 生成周报 / 月报」这条链路已经完整**；
 推荐周计划已决定不做（B 级生成式推荐默认关、未做）；数据能导出成 JSON 包、也能导回来，
 还能导出成原工作区那一套文本（`records/` + `foods.csv` + `profile.md` + `targets.md`，
 仓库脚本可直接消费），手滑毁数据有快照可回滚，食物库能自己治理（来源筛选 / 疑似重复 / 停用），
-但提醒与设置页还没有。
+提醒也能用了（今日页的「今天还没记的」清单 + 应用打开时的本地通知），设置页把提醒的限制写清楚了，
+只剩设置页的几个开关（单位 / 外观 / 不再追问）与免责声明。
 
 ## 1. 文档地图
 
@@ -464,12 +465,45 @@
 
 > 仍未做：**FR-406 的「用户编辑 / 覆盖条目数值」**（含 DR-06 的来源替换）。治理页现在只能停用与删除。
 > 近似重复的自动合并属需求 §12 的 P2，不在这一轮。
+
+### 2.16 T4.5 落地：提醒（2026-10-16）
+
+阶段 4 的第五件事：把 M11 的提醒做出来（FR-1101 / FR-1102 / FR-1104 / FR-1105），并且
+**如实说明它做不到什么**（TD-09）。`/settings` 从占位页变成真页面，`PlaceholderPage.vue` 随之退休。
+
+- **判定是纯函数** `domain/reminders.ts`：`pendingReminders`（今天还没完成的事）+ `dueReminders`
+  （再过一道「已到设定时间」）、`factsFor`（把「哪一天 + 现在几点 + 今天有哪些数据」拼成事实）、
+  `mergeReminders`（按 id 补齐默认项）、`reminderHint` / `reminderTarget`（每项怎么补、去哪儿补）。
+  五项与默认时间只有一份定义（`REMINDER_DEFAULTS`），`data/repositories/settings.ts` 的 `defaultSettings()`
+  直接用它，不再各写一套；老数据缺的项在 `getSettings()` 里按 id 补齐（**只读时补、不写库**）。
+- **事实来自库** `application/reminders.ts` 的 `buildReminderState`：一次查 settings / day / intake / reports，
+  算出「有没有晨重 / 睡前重 / 摄入 / 本周周报 / 本月月报」。应用内提醒与系统通知**共用这一份事实**，
+  不会出现「卡片说还没称重、通知说你已经称过」。周报口径仍用 `periodOf('weekly', date)`（按周一起算），
+  只有「哪一天算这一周的最后一天」看 `settings.weekStart`。
+- **本地通知** `application/notify.ts`：`notificationSupport()`（每次实时读 `Notification.permission`，
+  用户去浏览器设置里改回来立刻生效）、`requestNotificationPermission()`、`runReminderTick()`（弹一条并记
+  「今天通知过」）、`startReminderLoop()`（应用打开期间每分钟一次 + `visibilitychange` 回前台补一次）。
+  **一天只弹一次**记在 `meta.reminderNotified`（本机状态，不进导出包）；没授权 / 不支持 → 整条链路静默跳过。
+- **页面** `/settings`（`pages/SettingsPage.vue`）：五项提醒的开关与时间（改一下就存，没有保存按钮）、
+  权限状态与申请按钮、**限制说明**（没有服务端 → 应用关着不响、不提供日历 / .ics 导出、一天只响一次）、
+  模型设置入口，以及 T4.6 未做清单（单位 / 外观 / 不再追问 / 免责声明）—— 先把位置与需求编号写好，免得找不到入口。
+- **今日页**新增「今天还没记的」卡片：`buildReminderState().pending` + `reminderHint`，每条一个「去补」跳到对应
+  记录页（体重 → `/log/body`，摄入 → `/log/diet`，周报月报 → `/reports`）。`App.vue` 挂载时 `startReminderLoop()`、
+  卸载时停掉。
+- 验收：`npm test` 49 文件 / 461 项、`npm run build` 通过。新用例 `reminders.spec.ts` 17 项（时间解析、
+  到点才响、只在这一周 / 本月收尾那天提报告、`weekStart` 影响哪一天算周末、认不出的 id 不臆造语义、
+  `mergeReminders` 补默认项、库里有数据就不提醒、上一周的报告不算数、关掉的项两条链路都不出现、
+  改过时间按新时间判定、权限四种状态、没授权不弹但应用内照旧、同一天只弹一次、`startReminderLoop`
+  立刻检查且能停），`settings-page.spec.ts` 7 项（五项与默认时间、关掉落库、改时间落库、关掉后时间输入禁用、
+  限制文案、不支持的按钮禁用、模型设置入口与 T4.6 清单）。口径与五条落地约定见设计文档 §9.4 的「实现补充」。
+
+> 仍未做（T4.6）：单位与周起始日、外观、`mutedFields`（「不再追问」名单）的 UI 入口、免责声明与诊断信息导出。
 ## 3. 部分完成：有明确缺口（优先补这些）
 
 | 编号 | 已实现 | 缺什么 | 建议落点 |
 | --- | --- | --- | --- |
 | T2.5 | 每次调用都写 `llmLogs`；模型设置页汇总次数 / 失败数 / 输入输出估算，并可清空 | 单次任务超出预算 2 倍时的「是否继续」确认弹窗 | `app/src/llm/index.ts`（估算是现成的）+ `LogQuickPage` 的交互 |
-| 澄清 | `mutedFields`（「不再追问」名单）机制可用 | 没有 UI 入口让用户维护这份名单，目前只能由调用方传入 | `/settings` 页（该页整体还是占位，见 T4.6） |
+| 澄清 | `mutedFields`（「不再追问」名单）机制可用 | 没有 UI 入口让用户维护这份名单，目前只能由调用方传入 | `/settings` 页（T4.5 已把提醒做进去，名单入口属 T4.6） |
 
 ## 4. 未开始
 
@@ -492,7 +526,6 @@
 
 | 任务 | 要做的事 | 依赖 / 注意 | 验收 |
 | --- | --- | --- | --- |
-| T4.5 | 提醒：应用内提醒 + 能力探测的本地通知 | 前提约束 TD-09：**无后端、不做 Web Push、不做 .ics / 日历导出**；设置页要写明限制 | 打开应用能看到当天未完成项；系统支持时按设定时间通知 |
 | T4.6 | `/settings`（提醒、单位、外观、不再追问名单）与 `/data` 剩下的部分（离线队列界面、诊断信息导出）、免责声明 | 需求 §9 要求在应用内展示免责声明；`modelConfig` 已有诊断信息的雏形。**`/data` 的导出 / 导入（T4.1）与快照回滚（T4.3）已经做了** | 需求 §9 与 FR-1608 可验 |
 | FR-406（欠账） | 食物条目数值的编辑 / 覆盖（含 DR-06 的来源替换） | M4 的一部分，原计划搭在「食物库」页上，T4.4 只做了来源筛选 / 疑似重复 / 停用与删除保护 | 手工值能覆盖模型值，来源标注跟着变 |
 
@@ -504,7 +537,9 @@
 > 破坏性写操作之前会自动拍一张，`/data` 上能按天回滚，回滚本身也能再回滚。
 > **T4.4（食物库治理）已于 2026-10-16 完成**，见 §2.15：`/foods` 从占位页变成真页面，
 > 来源 / 分类筛选、疑似重复分组提醒、停用↔恢复、被引用过的条目删不掉（FR-412）。
-> 阶段 4 现在从 **T4.5 提醒**接着做（T4.6 设置页随后）。
+> **T4.5（提醒）已于 2026-10-16 完成**，见 §2.16：`/settings` 从占位页变成真页面（`PlaceholderPage.vue` 退休），
+> 今日页顶部有「今天还没记的」清单，系统支持且已授权时应用打开着会按设定时间弹一条本地通知。
+> **T4.6 只做设置页剩下的部分**（它那一行里的「提醒」已经在 T4.5 做完了），之后收尾 T3.8 与 FR-406。
 
 ## 5. 代码地图
 
@@ -515,10 +550,10 @@ app/
   src/
     app/          启动流程（bootstrap：开库 + 写种子）、日期工具、设置、图片压缩
     domain/       纯计算与领域类型 —— 无 IO、不依赖 Vue / Dexie（对拍测试直接打这里）；
-                  foodName / foodAudit 是食物库的名称归一化与疑似重复判定
+                  foodName / foodAudit 是食物库的名称归一化与疑似重复判定；reminders 是提醒的判定、默认时间段与补记入口
     data/         Dexie schema（db.ts）、仓储层（repositories/）、种子数据（seed/）
     llm/          OpenAI 兼容客户端、错误分类、文本抽取、任务注册表与流水线、tasks/
-    application/  用例层：本地优先、业务校验、落库编排（foodLibrary / foodResolve / foodAdmin / logParse / queue / report / coach / calibration / snapshot / daySummary）
+    application/  用例层：本地优先、业务校验、落库编排（foodLibrary / foodResolve / foodAdmin / logParse / queue / report / coach / calibration / snapshot / reminders / notify / daySummary）
     io/           导出包组装（exportPackage）、导入校验 / 预演 / 落库（importPackage）；
                   工作区文本导出（workspaceExport）、日快照载荷与校验（snapshot）；
                   markdown/ 记录文件解析与导出（record / export）
@@ -569,6 +604,10 @@ app/
 | 导出为工作区文本 | `io/workspaceExport.ts` `buildWorkspaceExport` / `bundleWorkspaceFiles` / `splitWorkspaceBundle`（读库、排序、打包） |
 | 工作区文本怎么渲染 | `io/markdown/export.ts` `renderRecordFile` / `renderFoodsCsv` / `renderProfileFile` / `renderTargetsFile` / `summaryBlockLines` |
 | 显示数值的舍入 | `domain/format.ts` `fmtNumber`（1 位小数、**逢半取偶**，对齐脚本的 `'%.1f'`） |
+| 提醒的判定与默认项（T4.5） | `domain/reminders.ts` `pendingReminders` / `dueReminders` / `factsFor` / `mergeReminders` / `reminderHint` / `reminderTarget` |
+| 提醒的事实来源 | `application/reminders.ts` `buildReminderState`（一次查库凑出「今天有哪些数据」） |
+| 本地通知与权限 | `application/notify.ts` `notificationSupport` / `requestNotificationPermission` / `runReminderTick` / `startReminderLoop` |
+| 设置页与提醒入口 | `pages/SettingsPage.vue`（`/settings`，T4.5）；今日页顶部的提醒卡片在 `pages/TodayPage.vue` |
 | 路由表 | `app/src/router/index.ts`（权威表格在 `docs/pwa-design.md` §8.1） |
 | 底部 tab 匹配规则 | `app/src/App.vue` 的 `tabs[].match` |
 
@@ -579,7 +618,7 @@ app/
 ```bash
 npm install
 npm run dev       # 本地开发服务器
-npm test          # 单元 / 对拍 / 组件测试（47 文件 / 435 项）
+npm test          # 单元 / 对拍 / 组件测试（49 文件 / 461 项）
 npm run build     # vue-tsc 类型检查 + 生产构建（产物 dist/）
 npm run preview   # 预览构建产物 —— 测 PWA 行为请用这个，不要用 dev
 npm run seed      # 从 ../data/foods.csv 重新生成内置食物库种子
@@ -689,6 +728,10 @@ npm run build
   症状是断言 UI 文案时读到的还是旧内容：用例先用 `vi.waitFor` 等草稿落库，再用**一次** `flushPromises()` 就去读渲染结果，
   在 20 个 worker 并行抢资源时这次等待不够。修法很直接——把断言本身也包进 `vi.waitFor`。
   在此之前：看到它失败先重跑一次，**不要**据此判断自己的改动出了问题。
+- **全量跑 `npm test` 时，`workspace-script.spec.ts` 里「脚本自己写的 AUTO 区块与我们写的逐字一致」可能撞 5 秒默认超时**
+  （2026-10-16 观察：49 个 worker 并行时该用例实测 6.5 秒；单独跑这个文件 8.9 秒内全过）。它**真的**会
+  `spawn` Python 去跑 `nutrition.py`，机器忙的时候就会超。看到它失败先单独重跑该文件，别据此判断导出逻辑坏了；
+  要根治可以给这一条用例单独放宽 `timeout`。
 - **给 Dexie 加版本时，第一行必须是 `this.version(1)` 的全量表**（2026-10-16 真事故，加 `adviceLog` 时踩到）：
   原来第一行是 `this.version(SCHEMA_VERSION).stores({...14 张表})`，`SCHEMA_VERSION` 从 2 改成 3 之后，
   这一行变成了「v3 的全量表」，而后面的 `this.version(2).stores({ drafts })` 就被读成「v2 里只有 drafts 一张表」——
@@ -710,15 +753,18 @@ npm run build
    对「数据在本地」补齐了最后一条安全带。
 8. ~~T4.4 食物库治理~~ —— 2026-10-16 已完成（见 §2.15）：来源 / 分类筛选、疑似重复分组提醒、
    停用↔恢复、被引用过的条目删不掉（FR-412）。
-9. **T4.5 提醒**（应用内提醒 + 能力探测的本地通知）→ **T4.6 设置页 / 免责声明 / 诊断导出**
-   —— 阶段 4 的收尾。**T3.8（B 级推荐）**放最后：它默认关，且开启前必须先恢复约束字段。
-   另外还欠一笔 **FR-406**（食物条目数值编辑），见 §4.2 表格里那一行。
+9. ~~T4.5 提醒~~ —— 2026-10-16 已完成（见 §2.16）：`/settings` 真页面（`PlaceholderPage.vue` 退休）、
+   今日页「今天还没记的」清单、应用打开时的本地通知（授权后一天只弹一次）。
+10. **T4.6 设置页收尾**：单位与周起始日、外观、`mutedFields`（「不再追问」名单）入口、免责声明与诊断信息导出，
+   外加 `/data` 的离线队列界面 —— 阶段 4 的最后一件事。**T3.8（B 级推荐）**放最后：它默认关，且开启前必须先
+   恢复约束字段。另外还欠一笔 **FR-406**（食物条目数值编辑），见 §4.2 表格里那一行。
 
 每一步都能独立验收；建议每完成一项就更新本文第 2 / 3 / 4 节的表格，以及 `docs/pwa-design.md` §13 的状态标记。
 
 ## 10. 交接自检清单
 
-- [ ] `cd app && npm install && npm test`（47 文件 / 435 项；`quick-log-page.spec.ts` 偶发失败时重跑一次即可，见 §8）
+- [ ] `cd app && npm install && npm test`（49 文件 / 461 项；`quick-log-page.spec.ts` 与 `workspace-script.spec.ts`
+      偶发失败时重跑一次即可，见 §8）
 - [ ] `npm run build` 通过
 - [ ] `npm run preview` 能打开今日页，底部 tab 来回切换不卡死
 - [ ] 今日页顶部有一次性的「装到主屏幕」提示，点「知道了」后刷新不再出现
@@ -744,6 +790,12 @@ npm run build
       疑似重复卡片里能看到 `鸡蛋(全蛋 生)` 与 `鸡蛋(水煮)` 并标着「数值完全相同」
 - [ ] 食物库里找一条**记过**的食物：删除按钮是禁用的（写着 FR-412）；找一条没记过的：能删掉；
       把某条「停用」后，在记录页的食材检索里搜不到它，切到「已停用」还能恢复
+- [ ] 今日页「今天还没记的」卡片里列出晨起称重 / 睡前称重 / 当天摄入还没记完（周末还会多一条「周末生成周报」）；
+      点「去补」能落到对应记录页，记完一条回今日页卡片里就少一条
+- [ ] 底部 tab「设置」→ 把「晨起称重」关掉：回今日页确认它不在清单里，刷新后仍然是关的；再打开恢复
+- [ ] `/settings` 把「晨起称重」的时间改到比现在早一点 → 点「开启系统通知」并允许 → 回今日页（保持应用打开）：
+      一分钟内会弹一条「薄肌计划 · 晨起称重」；切到别的 App 再切回来不会再弹同一条
+- [ ] `/settings` 的限制说明能看到：没有服务端 → 应用关着不会响；不提供日历 / .ics 导出
 - [ ] `/profile` 填一份档案 → `/targets` 用首次估算写入目标，并在「校准记录」里看到一行
 - [ ] 在 `/targets` 把热量改掉 200 kcal：确认卡片要出现「超过 ±150 kcal」与「样本可能不足」提示
 - [ ] 在 `/settings/model` 填入自己的 OpenAI 兼容接口，连通性测试通过

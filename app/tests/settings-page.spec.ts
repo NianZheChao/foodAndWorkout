@@ -1,0 +1,127 @@
+// @vitest-environment jsdom
+/**
+ * 设置页的「提醒」部分（T4.5 / M11 FR-1101 / FR-1104 / TD-09）。
+ *
+ * 这个页面在 T4.5 里承担一条硬需求：**把提醒的限制写在用户看得见的地方**。
+ * 所以除了「改一下就存一下」，这里还钉住三块必须出现的说明：没有服务端（应用关着不响）、
+ * 不做日历 / .ics 导出、同一事项一天只响一次。
+ */
+
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
+import { createMemoryHistory, createRouter, type Router } from 'vue-router'
+import SettingsPage from '@/pages/SettingsPage.vue'
+import { routes } from '@/router'
+import { db } from '@/data/db'
+import { getSettings } from '@/data/repositories/settings'
+import { REMINDER_DEFAULTS, REMINDER_IDS } from '@/domain/reminders'
+
+async function mountSettings(): Promise<{ wrapper: VueWrapper; router: Router }> {
+  const router = createRouter({ history: createMemoryHistory(), routes })
+  await router.push('/settings')
+  await router.isReady()
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  const wrapper = mount(SettingsPage, { global: { plugins: [pinia, router] } })
+  // 页面是「读 IndexedDB → 再渲染」，fake-indexeddb 走宏任务，等到五项都出来再断言
+  await vi.waitFor(() => {
+    expect(wrapper.findAll('input[type="time"]')).toHaveLength(REMINDER_DEFAULTS.length)
+  })
+  return { wrapper, router }
+}
+
+function switches(wrapper: VueWrapper): VueWrapper[] {
+  return wrapper.findAll('.van-switch') as unknown as VueWrapper[]
+}
+
+async function savedReminder(id: string) {
+  const settings = await getSettings()
+  const row = settings.reminders.find((item) => item.id === id)
+  if (!row) throw new Error(`库里没有提醒项 ${id}`)
+  return row
+}
+
+beforeEach(async () => {
+  await db.open()
+  await Promise.all(db.tables.map((table) => table.clear()))
+  // jsdom 不实现 Notification API；显式清一遍，免得断言依赖环境细节
+  ;(globalThis as { Notification?: unknown }).Notification = undefined
+})
+
+describe('设置页 · 提醒', () => {
+  it('五项提醒都列出来，时间是默认值，开关默认都开着', async () => {
+    const { wrapper } = await mountSettings()
+    const text = wrapper.text()
+    for (const row of REMINDER_DEFAULTS) expect(text).toContain(row.label)
+
+    const times = wrapper.findAll<HTMLInputElement>('input[type="time"]')
+    expect(times.map((input) => input.element.value)).toEqual(REMINDER_DEFAULTS.map((row) => row.time))
+    expect(switches(wrapper)).toHaveLength(REMINDER_DEFAULTS.length)
+    expect(switches(wrapper).every((item) => item.classes().includes('van-switch--on'))).toBe(true)
+  })
+
+  it('关掉一项就落库（没有「保存」按钮，也没有重复的默认项）', async () => {
+    const { wrapper } = await mountSettings()
+    await switches(wrapper)[2].trigger('click')
+    await flushPromises()
+
+    expect((await savedReminder(REMINDER_IDS.intake)).enabled).toBe(false)
+    expect(await savedReminder(REMINDER_IDS.morningWeight)).toMatchObject({ enabled: true, time: '09:00' })
+    // Vant 的开关只有「开着」才加修饰类，关掉后落回光秃秃的 `van-switch`
+    expect(switches(wrapper)[2].classes()).not.toContain('van-switch--on')
+    expect(switches(wrapper)[0].classes()).toContain('van-switch--on')
+    expect((await getSettings()).reminders).toHaveLength(REMINDER_DEFAULTS.length)
+  })
+
+  it('改时间就落库，其他项不受影响', async () => {
+    const { wrapper } = await mountSettings()
+    const input = wrapper.findAll<HTMLInputElement>('input[type="time"]')[0]
+    await input.setValue('07:30')
+    await input.trigger('change')
+    await flushPromises()
+
+    expect((await savedReminder(REMINDER_IDS.morningWeight)).time).toBe('07:30')
+    expect((await savedReminder(REMINDER_IDS.eveningWeight)).time).toBe('22:30')
+  })
+
+  it('关掉的项，时间输入跟着禁掉（不给「关了还改时间」的错觉）', async () => {
+    const { wrapper } = await mountSettings()
+    await switches(wrapper)[0].trigger('click')
+    await flushPromises()
+    const input = wrapper.findAll<HTMLInputElement>('input[type="time"]')[0]
+    expect(input.element.disabled).toBe(true)
+  })
+
+  it('把限制写在页面上：没有服务端 → 应用关着不响、不做 .ics、一天只响一次', async () => {
+    const { wrapper } = await mountSettings()
+    const text = wrapper.text()
+    expect(text).toContain('没有服务端')
+    expect(text).toContain('应用关着的时候也不会响')
+    expect(text).toContain('不提供日历')
+    expect(text).toContain('一天只会响一次')
+  })
+
+  it('设备不支持系统通知时：如实说明，按钮禁用并写清只走应用内提醒', async () => {
+    const { wrapper } = await mountSettings()
+    expect(wrapper.text()).toContain('本设备不支持系统通知')
+
+    const button = wrapper.findAll('button').find((item) => item.text().includes('本设备不支持系统通知'))
+    if (!button) throw new Error('找不到权限按钮')
+    expect((button.element as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('模型设置入口与「还没做的部分」都在（已有的能力不能被埋掉）', async () => {
+    const { wrapper, router } = await mountSettings()
+    const entry = wrapper.findAll('button').find((item) => item.text() === '模型设置')
+    if (!entry) throw new Error('找不到「模型设置」入口')
+    await entry.trigger('click')
+    await vi.waitFor(() => {
+      expect(router.currentRoute.value.path).toBe('/settings/model')
+    })
+
+    const text = wrapper.text()
+    expect(text).toContain('单位与周起始日')
+    expect(text).toContain('不再追问')
+  })
+})

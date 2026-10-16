@@ -12,14 +12,16 @@ import { showToast } from 'vant'
 import AppHeader from '@/components/AppHeader.vue'
 import { useDayStore } from '@/store/day'
 import { runQueue } from '@/application/queue'
+import { buildReminderState } from '@/application/reminders'
 import { fmtNumber, fmtPercent } from '@/domain/format'
+import { reminderHint, reminderTarget } from '@/domain/reminders'
 import { formatDateCn, todayIso } from '@/app/date'
 import { db, SCHEMA_VERSION } from '@/data/db'
 import { getAdviceByDate } from '@/data/repositories/adviceLog'
 import { countFoods } from '@/data/repositories/foods'
 import { countOpenOps } from '@/data/repositories/pendingOps'
 import { META_KEYS, getMeta } from '@/data/meta'
-import type { AdviceRecord } from '@/domain/types'
+import type { AdviceRecord, ReminderSetting } from '@/domain/types'
 
 const router = useRouter()
 const store = useDayStore()
@@ -30,6 +32,8 @@ const seedVersion = ref('-')
 const retrying = ref(false)
 /** 今天的 AI 指导（不在这里生成：生成要花钱，得用户点进 /coach 才会调用模型） */
 const advice = ref<AdviceRecord>()
+/** 今天还没完成的事项（应用内提醒，T4.5 / FR-1101）：判定全在 `application/reminders` 里 */
+const reminders = ref<ReminderSetting[]>([])
 
 onMounted(async () => {
   await store.load(todayIso())
@@ -37,6 +41,7 @@ onMounted(async () => {
   queueCount.value = await countOpenOps()
   seedVersion.value = (await getMeta<string>(META_KEYS.seedVersion)) ?? '-'
   advice.value = await getAdviceByDate(todayIso())
+  reminders.value = (await buildReminderState(todayIso())).pending
 })
 
 const weightText = computed(() =>
@@ -134,6 +139,30 @@ async function retryQueue(): Promise<void> {
       </p>
     </div>
 
+    <div v-if="reminders.length" class="card">
+      <div class="card-head">
+        <h2 class="card-title">今天还没记的</h2>
+        <span class="tag">提醒</span>
+      </div>
+      <p class="muted">
+        设了时间的那几项，应用打开着的时候会弹一条系统通知（要授权）；这里是不管有没有通知都能看到的清单。
+      </p>
+      <ul class="reminder-list">
+        <li v-for="row in reminders" :key="row.id">
+          <div class="reminder-line">
+            <span class="reminder-name">{{ row.label }}</span>
+            <span class="muted">{{ reminderHint(row.id) }}</span>
+          </div>
+          <van-button size="mini" type="primary" plain @click="router.push(reminderTarget(row.id))">
+            去补
+          </van-button>
+        </li>
+      </ul>
+      <div class="link-grid">
+        <van-button size="small" plain @click="router.push('/settings')">提醒设置</van-button>
+      </div>
+    </div>
+
     <div class="card">
       <div class="card-head">
         <h2 class="card-title">今日指导</h2>
@@ -219,6 +248,33 @@ async function retryQueue(): Promise<void> {
 </template>
 
 <style scoped>
+.reminder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reminder-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.reminder-line {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.reminder-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
 .coach-line {
   margin: 0 0 8px;
   font-size: 15px;

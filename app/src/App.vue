@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import { runQueue } from '@/application/queue'
+import { startReminderLoop } from '@/application/notify'
 import InstallHint from '@/components/InstallHint.vue'
 
 const route = useRoute()
@@ -22,9 +23,21 @@ async function drainQueue(): Promise<void> {
   }
 }
 
+/**
+ * 提醒的本地通知（T4.5 / FR-1101）：应用打开期间每分钟检查一次到点未完成的事项。
+ * 没授权 / 不支持时整条链路静默跳过，应用内提醒不受影响（FR-1104）。
+ */
+let stopReminders: (() => void) | undefined
+
 onMounted(() => {
   void drainQueue()
-  window.addEventListener('online', () => void drainQueue())
+  window.addEventListener('online', drainQueue)
+  stopReminders = startReminderLoop()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('online', drainQueue)
+  stopReminders?.()
 })
 
 /**

@@ -1,8 +1,12 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 
-const Placeholder = () => import('@/pages/PlaceholderPage.vue')
-
-/** 页面清单对应 docs/pwa-design.md §8.1。阶段 1 已落地今日 / 记录 / 汇总，其余先占位。 */
+/**
+ * 页面清单对应 docs/pwa-design.md §8.1。
+ *
+ * 阶段 4 起**所有路由都有真页面**了（T4.5 把最后一个占位页 `/settings` 换掉），
+ * 所以 `PlaceholderPage.vue` 已经退休 —— 再加占位页时记得同时给它留下入口，
+ * 否则 `tests/navigation-reachability.spec.ts` 会拦下来。
+ */
 export const routes: RouteRecordRaw[] = [
   { path: '/', redirect: '/today' },
   { path: '/today', name: 'today', component: () => import('@/pages/TodayPage.vue'), meta: { title: '今日' } },
@@ -33,7 +37,12 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: '校准向导', spec: 'M9 FR-903~905 / §6.7' }
   },
   { path: '/profile', name: 'profile', component: () => import('@/pages/ProfilePage.vue'), meta: { title: '档案', spec: 'M10 FR-1000' } },
-  { path: '/settings', name: 'settings', component: Placeholder, meta: { title: '设置', spec: 'M16 FR-1600' } },
+  {
+    path: '/settings',
+    name: 'settings',
+    component: () => import('@/pages/SettingsPage.vue'),
+    meta: { title: '设置', spec: 'M16 FR-1600 / M11 FR-1101' }
+  },
   { path: '/settings/model', name: 'settings-model', component: () => import('@/pages/ModelSettingsPage.vue'), meta: { title: '模型设置', spec: 'M13 FR-1300' } },
   {
     path: '/data',
