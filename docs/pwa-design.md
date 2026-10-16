@@ -1019,6 +1019,10 @@ interface LlmTask<In, Out> {
 `app/src/router/index.ts` 的路由表与它一一对应（`tests/navigation-reachability.spec.ts` 逐条比对）。
 **新增页面必须在这里登记**，否则「页面上没有同级入口」这种看不出来的毛病会直接变成测试失败。
 
+**路由表最后有一条兜底**：`{ path: '/:pathMatch(.*)*', redirect: '/today' }` —— 对不上的路径一律回今日页。
+**白屏是最差的结果**（一片空白、没有可点的东西、也不知道该改哪里）；带文件名的分享链接
+（`.../index.html`）、手打错的深链接、以及**托管路径前缀与构建 base 不一致**（见下）都会被它接住。
+
 **路由表按构建时的 `base` 挂载**：`createWebHistory(import.meta.env.BASE_URL)`（2026-10-16 修，见 §12「分发」）。
 `index.html` 里没有 `<base>` 标签，`createWebHistory()` 一旦留空就按 `/` 算 —— 子路径部署下应用以为自己
 长在站根，`router.push('/today')` 会把地址栏改成 `https://<owner>.github.io/today`（`pushState` 不刷新，
@@ -1461,6 +1465,8 @@ scripts/
 | T4.8 | **暗色缺陷统一修复 + 导航去重 + 食物库卡片下线 + 报告可删**（2026-10-16） | ✅ 2026-10-16 完成：(1) **颜色只写 token** —— 新增 `--warn-soft` / `--flag-soft` / `--on-danger`，修掉提醒卡片、「待核对」数字、危险按钮三处在深色下的对比度问题，并由 `tests/theme-tokens.spec.ts` 静态守住（页面里再出现颜色字面量就失败）；图表改走 `app/chartTheme.ts` 的两套取值 + `useResolvedTheme()`，连 ECharts 默认的白底提示框一起修。(2) 「记录」域根改为饮食面板 `/log/diet`（旧地址 `/log` 转过来），页头不再并排出现「记录」「饮食」两颗指向同一页的格子，并给 `NavDomain` 加了 `rootLabel`。(3) 「疑似重复」分组卡片下线（理由见 §4.2）。(4) 周报 / 月报可在列表与详情删除（`removeReport`，只做二次确认）。口径见 §4.2 / §8.1 / §8.5 |
 
 | T4.9 | **部署路径缺陷：子路径下路由 base 丢失**（2026-10-16） | ✅ 2026-10-16 完成：`createWebHistory()` 原来没传 base，vue-router 只认 `<base href>` 或 `/`，而 `index.html` 里没有 `<base>` 标签 —— GitHub Pages 项目页（`/foodAndWorkout_deploy/`）下应用以为自己长在站根，站内地址全成了 `/today` 这种跨到站根的路径；`pushState` 不刷新，所以界面照常能用，但**在子路径下刷新就会被用户站（Hexo 博客）的 404 页接走**。改为 `createWebHistory(import.meta.env.BASE_URL)`，同一份产物在根路径与子路径下都对。验收：`tests/router-base.spec.ts`（`vi.stubEnv` 换 `BASE_URL` + `resetModules` 重新 import 路由，断言 `history.base` 与所有站内 href 都落在应用目录内；改回留空即失败）。口径见 §8.1 / §12 |
+
+| T4.10 | **兜底路由：对不上的路径不白屏**（2026-10-16） | ✅ 2026-10-16 完成：路由表末尾加 `{ path: '/:pathMatch(.*)*', redirect: '/today' }`。起因是使用者报「打开 `/<repo>/` 白屏」—— 定位为部署路径事故（T4.9）留下的旧 Service Worker / HTML 缓存，但顺带堵掉这一类失败模式：带文件名的分享链接（`.../index.html`）、手打错的深链接、托管前缀与 base 不一致时，一律回今日页而不是空白。验收：`tests/router-base.spec.ts`（`/index.html` `/nope` `/foods/deep/nope` 都落到 `/today`）。口径见 §8.1 |
 
 ---
 ## 14. 风险与对策

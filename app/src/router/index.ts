@@ -15,6 +15,21 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 export const routes: RouteRecordRaw[] = [
   { path: '/', redirect: '/today' },
 
+  /**
+   * 兜底：**对不上的路径一律回今日页，不留白屏**（2026-10-16 补）。
+   *
+   * 白屏是最差的结果 —— 用户看到一片空白，没有任何可点的东西，也不知道该改哪里。
+   * 会被这条路接住的真实情况：
+   * - 带文件名的分享链接 `.../index.html`（有人复制地址栏就可能带上它）；
+   * - 手打错、或者多一层/少一层前缀的深链接；
+   * - **托管平台的路径前缀与构建 base 不一致**时，站内每个地址都对不上（那是 2026-10-16 那次
+   *   部署事故的形态：`createWebHistory()` 没传 base，应用以为自己长在站根）—— 有这条路，
+   *   即使前缀错了也只是「回到今日页」，不会白屏。
+   *
+   * 放在最后：路由按具体程度排序，具体路由永远优先命中这里。
+   */
+  { path: '/:pathMatch(.*)*', redirect: '/today' },
+
   // 今日：今天的进度、指导与推荐（域根 `/today`）
   { path: '/today', name: 'today', component: () => import('@/pages/TodayPage.vue'), meta: { title: '今日' } },
   { path: '/summary/:date?', name: 'summary', component: () => import('@/pages/SummaryPage.vue'), meta: { title: '当日汇总', spec: 'M5 FR-500' } },

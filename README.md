@@ -52,6 +52,10 @@ npm run deploy -- --dry-run   # 只构建与准备，看清会动哪些文件
   `404.html`（SPA 回退，见下）。
 - GitHub Pages 设置（**一次性**，只在新仓库第一次发布前做）：Settings → Pages →
   Source = `Deploy from a branch`，分支 `main`，目录 `/ (root)`。
+- 站点入口：**`https://<owner>.github.io/<repo>/`**（自动进今日页，地址栏随即停在 `/<repo>/today`）。
+  每次发布会换掉带哈希的产物文件名，所以**发布后第一次打开可能还是旧版甚至白屏** —— 那是浏览器里的旧
+  Service Worker / HTML 缓存（旧 HTML 指向的旧文件已经不在服务器上了）。关掉标签页或主屏图标重开一次即可，
+  还不行就清一下该站点的数据。路由的兜底会把对不上的路径拉回今日页，不会留白屏。
 
 ### 换托管（或自有域名）要动的地方
 

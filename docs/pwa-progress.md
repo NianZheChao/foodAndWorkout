@@ -6,7 +6,7 @@
 - 最后更新：2026-10-16
 - 应用版本：`0.1.0`（`app/package.json`）
 - 分支 / 最近提交：`main` / `fix: 部署到子路径时路由 base 丢失，刷新不再跳到站根（T4.9）`
-- 质量基线（2026-10-16 重构后实测）：`npm test` 62 文件 / 562 项（`npm run build` 随之通过）；全量并行跑**已不再有偶发失败**（两条老竞态已按 §8 修掉，真跑 Python 的那条也给了 30 秒超时）；`workspace-script.spec.ts` 没装 Python 时整组跳过；`npm run build`（含 `vue-tsc -b` 类型检查，**测试文件也在类型检查范围内**）通过；新增 `tests/router-base.spec.ts`（子路径部署护栏，见 §2.25）
+- 质量基线（2026-10-16 重构后实测）：`npm test` 62 文件 / 563 项（`npm run build` 随之通过）；全量并行跑**已不再有偶发失败**（两条老竞态已按 §8 修掉，真跑 Python 的那条也给了 30 秒超时）；`workspace-script.spec.ts` 没装 Python 时整组跳过；`npm run build`（含 `vue-tsc -b` 类型检查，**测试文件也在类型检查范围内**）通过；新增 `tests/router-base.spec.ts`（子路径部署护栏，见 §2.25）
 
 ## 0. 三十秒速览
 
@@ -29,7 +29,7 @@
 整份计划的最后一件 T3.8（B 级生成式推荐，默认关）也在 §2.19（安全边界）与 §2.20（两个任务 + `/plan` 页）
 落地了 —— **阶段 0 到阶段 4 全部完成，没有欠账**；计划收口后又补了两件「怎么用起来」的事：
 token 预算告警（T2.5，见 §2.21）与**分发**（`npm run deploy` 发到 GitHub Pages，见 §2.22）；随后又做了一轮**界面与菜单重构**（T4.7，见 §2.23）—— 底部 tab 由「今日 / 记录 / 趋势 / 报告 / 设置」变成五个域「今日 / 记录 / 分析 / 我的 / 设置」，每个页面都有统一的树状路径；重构之后又按使用者反馈修了一轮（T4.8，见 §2.24）：**深色模式里写死颜色的地方全部改成 token**（并加了静态守卫）、「记录」域根改成饮食面板（页头不再并排出现「记录」「饮食」两颗指向同一页的格子）、下线「疑似重复」卡片、周报月报可删。B 级推荐按 FR-1003 保持默认关，要到
-「设置 → 生成式推荐」显式打开、且档案里四项约束填齐之后才会出现「今天练什么 / 今天吃什么」。 之后又修了一处**部署路径缺陷**（T4.9，见 §2.25）：路由 base 原来留空，GitHub Pages 项目页下站内地址会越出应用目录 —— 在子路径里一刷新就被用户站（博客）接走；现在 base 取 `import.meta.env.BASE_URL`，并由 `tests/router-base.spec.ts` 守住。
+「设置 → 生成式推荐」显式打开、且档案里四项约束填齐之后才会出现「今天练什么 / 今天吃什么」。 之后又修了一处**部署路径缺陷**（T4.9，见 §2.25）：路由 base 原来留空，GitHub Pages 项目页下站内地址会越出应用目录 —— 在子路径里一刷新就被用户站（博客）接走；现在 base 取 `import.meta.env.BASE_URL`，并由 `tests/router-base.spec.ts` 守住。 随后又补了**兜底路由**（T4.10，见 §2.26）：对不上的路径（分享链接带 `/index.html`、手打错的深链接、托管前缀与 base 不一致）一律回今日页，不再白屏 —— 使用者报的「打开 `/<repo>/` 白屏」是浏览器里旧 Service Worker / HTML 缓存，产物本身没问题。
 
 ## 1. 文档地图
 
@@ -797,6 +797,30 @@ vue-router 只在 `<base href>` 或（两者都没有时）`/` 上取 base，而
 把路由改回 `createWebHistory()` 这条用例立刻失败（`expected '' to be '/foodAndWorkout_deploy'`），已实测确认。
 口径写在设计文档 §8.1 / §12 / §13（T4.9）；README 的「换托管」一节也补上了这条 ——
 路径前缀不只管资源与 manifest，**路由 base 也在里面**。
+### 2.26 T4.10 落地：兜底路由（对不上的路径不白屏）（2026-10-16）
+
+T4.9 修完、发布后，使用者又反馈：**打开 `https://nianzhechao.github.io/foodAndWorkout_deploy/` 是白屏**。
+
+排查结论（两条分开看）：
+
+1. **发布产物本身没问题**。用本机 Chrome 无头 + 干净 profile 打开线上站点，首页完整渲染出了今日页
+   （标题、域导航条、「今日进度」「今天还没记的」都在）—— 说明 `base` 修好之后 `/` 这条路径是通的：
+   路由器把 `/` 重定向到 `/today`，地址栏随后停在 `/<repo>/today`。
+2. **白屏来自使用者浏览器里的旧缓存**。这次发布的产物换了文件名（入口 chunk 从 `index-Cxzx1X8s.js`
+   变成 `index-DmaNw3m0.js`），而旧 Service Worker 会用**它自己缓存里的旧 `index.html`（指向已经不存在的
+   旧 chunk）**回应导航；即使没有 SW，浏览器对 HTML 也有 `max-age=600` 的 HTTP 缓存，同样会去要旧 chunk。
+   表现就是「一片空白」。**自救办法**：关掉标签页重开（装了主屏图标的关掉图标重开）——浏览器会在下一次导航
+   里更新 Service Worker 并换到新产物；还不行就清一下该站点的数据。
+
+顺手堵掉这一类失败模式（本次的代码改动）：**路由表末尾加兜底**
+`{ path: '/:pathMatch(.*)*', redirect: '/today' }` —— 对不上的路径一律回今日页。**白屏是最差的结果**：
+用户看到一片空白，没有可点的东西，也不知道该改哪里；而「回到今日页」至少是能用的。它接住的真实情况有：
+带文件名的分享链接（`.../index.html`）、手打错/多一层前缀的深链接、以及**托管路径前缀与构建 base 不一致**
+（正是 T4.9 的形态：`createWebHistory()` 没传 base 时站内每个地址都对不上）。
+
+**验收**：`tests/router-base.spec.ts`（+1）—— `/index.html`、`/nope`、`/foods/deep/nope` 三条都会落到 `/today`；
+`tests/navigation-reachability.spec.ts` 不受影响（兜底是纯跳转路由，不参与「路由表 ⇄ 导航树」比对）。
+口径写在设计文档 §8.1 / §13（T4.10），README 的「部署与分发」补了发布后的更新办法。
 ## 3. 部分完成：有明确缺口（优先补这些）
 
 | 编号 | 已实现 | 缺什么 | 建议落点 |
@@ -944,6 +968,7 @@ app/
 | 导航树（域 → 页面，T4.7） | `app/src/app/nav.ts` `navDomains` / `navTabs` / `domainOf` / `navLocation` —— **新增页面先登记这里**，否则 `navigation-reachability.spec.ts` 会拦下来（域根那颗格子的文案用 `rootLabel` 单给，记录域是「饮食」） |
 | 页头的域导航条与面包屑 | `components/AppHeader.vue`（按 `navLocation` 自动渲染，页面不写入口）；样式基元在 `src/style.css` |
 | 部署路径与路由 base（T4.9） | `src/router/index.ts` 的 `createWebHistory(import.meta.env.BASE_URL)` —— **不要留空**（留空按 `/` 算，子路径部署下站内地址会跑到站根）；护栏 `tests/router-base.spec.ts` |
+| 兜底路由（T4.10） | `src/router/index.ts` 末尾的 `{ path: '/:pathMatch(.*)*', redirect: '/today' }` —— 对不上的路径回今日页，**不要让它落到白屏**；护栏 `tests/router-base.spec.ts` |
 | 底部 tab 匹配规则 | `app/src/App.vue`（`tabs = navTabs`，高亮走 `domainOf(route.path)`） |
 
 ## 6. 环境与常用命令
@@ -953,7 +978,7 @@ app/
 ```bash
 npm install
 npm run dev       # 本地开发服务器
-npm test          # 单元 / 对拍 / 组件测试（62 文件 / 562 项）
+npm test          # 单元 / 对拍 / 组件测试（62 文件 / 563 项）
 npm run build     # vue-tsc 类型检查 + 生产构建（产物 dist/）
 npm run preview   # 预览构建产物 —— 测 PWA 行为请用这个，不要用 dev
 npm run deploy    # 构建（GitHub Pages 的 base）+ 推到部署仓库（§2.22；--dry-run 可先看）
@@ -1038,6 +1063,12 @@ npm run build
   同步断言「草稿已清除」—— 而删草稿是 `store/draft.ts` 的 `commit()` 里最后一步独立写（`deleteDraft`），
   读事务仍可能开在它提交之前，并行跑时约 1/4 概率假失败（`expected [ { …(17) } ] to have a length of +0 but got 1`）。
   规矩：**每一条「后面才发生」的写都要自己等一次**，别指望前面的 `waitFor` 顺带覆盖。
+- **发布新版本后，「打开还是旧样子 / 白屏」几乎都是浏览器里的旧缓存**（2026-10-16 真事故）：产物每次
+  构建都换文件名（入口 chunk 带哈希），而使用者浏览器里的旧 Service Worker 会用**它缓存里的旧
+  `index.html`** 回应导航 —— 那份 HTML 指向的旧 chunk 在服务器上已经不存在了。没有 SW 的浏览器也会因为
+  HTML 的 `max-age=600` 落到同一处境。**判断方法**：换个干净 profile / 无痕窗口打开一次，正常即与服务端无关。
+  **自救**：关掉标签页重开（装了主屏图标的关掉重开），或清该站点数据。**代码侧的对策**是兜底路由
+  （§2.26）：路径对不上时回今日页，绝不白屏。
 - **`showDialog` 在 jsdom 里没人点确认，promise 永远不 resolve**（组件测试会挂住）。要测确认后
   的行为，就 `vi.mock('vant', ...)` 只替掉 `showDialog`，其余（`van-button` 等真实组件）原样透传；
   `data-page.spec.ts` 的回滚用例是现成例子。
@@ -1153,10 +1184,11 @@ npm run build
 
 ## 10. 交接自检清单
 
-- [ ] `cd app && npm install && npm test`（62 文件 / 562 项；`workspace-script.spec.ts` 那条真跑 Python 的用例要给足超时，见 §8）
+- [ ] `cd app && npm install && npm test`（62 文件 / 563 项；`workspace-script.spec.ts` 那条真跑 Python 的用例要给足超时，见 §8）
 - [ ] `npm run build` 通过
 - [ ] `npm run preview` 能打开今日页，底部 tab 来回切换不卡死
 - [ ] 发布在子路径（GitHub Pages 项目页 `/<repo>/`）时：打开站点 → 在站内某页**刷新**，地址栏仍在 `/<repo>/` 下（`tests/router-base.spec.ts` 已覆盖，这条是出事时的手工复核）
+- [ ] 发布后用**干净窗口**（无痕 / 另一个浏览器）打开 `/<repo>/` 与 `/<repo>/today`：都是今日页、不白屏；再用平时那个浏览器打开一次，若还是旧版就关掉重开（旧 Service Worker）
 - [ ] 任一页面的页头都有一条域导航条（本域全部页面 + 当前页高亮）；报告详情顶上还有 `分析 › 报告 › 报告详情` 的面包屑
 - [ ] 今日页顶部有一次性的「装到主屏幕」提示，点「知道了」后刷新不再出现
 - [ ] 底部 tab「设置」→ 点「模型设置」能进（**不依赖有没有待补全**）；任一设置页的页头导航条里也有「模型与 AI」

@@ -46,4 +46,12 @@ describe('路由 base 跟着部署路径走', () => {
     const router = await routerAt('/')
     expect(router.resolve('/today').href).toBe('/today')
   })
+
+  it('对不上的路径回落到今日页，不留白屏', async () => {
+    const router = await routerAt('/')
+    for (const path of ['/index.html', '/nope', '/foods/deep/nope']) {
+      await router.push(path)
+      expect(router.currentRoute.value.path).toBe('/today')
+    }
+  })
 })
