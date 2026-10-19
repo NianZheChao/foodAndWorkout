@@ -13,6 +13,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 import SettingsPage from '@/pages/SettingsPage.vue'
 import { routes } from '@/router'
+import { APP_UPDATED_AT, APP_VERSION } from '@/app/version'
 import { db } from '@/data/db'
 import { getSettings, saveSettings } from '@/data/repositories/settings'
 import { saveProfile } from '@/data/repositories/profile'
@@ -64,6 +65,13 @@ beforeEach(async () => {
 })
 
 describe('设置页 · 提醒', () => {
+  it('底部显示日期版本号与更新时间', async () => {
+    const { wrapper } = await mountSettings()
+    const text = wrapper.text()
+    expect(text).toContain(`V${APP_VERSION}`)
+    expect(text).toContain(APP_UPDATED_AT)
+  })
+
   it('五项提醒都列出来，时间是默认值，开关默认都开着', async () => {
     const { wrapper } = await mountSettings()
     const text = wrapper.text()

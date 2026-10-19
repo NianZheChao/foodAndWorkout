@@ -64,7 +64,7 @@ const DISCLAIMERS: string[] = [
       <h2 class="card-title">版本</h2>
       <div class="kv">
         <span class="kv-key">应用版本</span>
-        <span class="kv-value">{{ APP_VERSION }}</span>
+        <span class="kv-value">V{{ APP_VERSION }}</span>
       </div>
       <div class="kv">
         <span class="kv-key">数据库 schema</span>

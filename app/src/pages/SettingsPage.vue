@@ -24,6 +24,7 @@ import {
   type NotificationSupport
 } from '@/application/notify'
 import { applyTheme, type ThemeChoice } from '@/app/theme'
+import { APP_UPDATED_AT, APP_VERSION } from '@/app/version'
 import { getProfile } from '@/data/repositories/profile'
 import { isRecommendEnabled, missingRecommendConstraints } from '@/domain/recommend'
 import { mergeReminders, reminderHint } from '@/domain/reminders'
@@ -302,6 +303,11 @@ async function restoreField(field: string): Promise<void> {
         </div>
       </div>
     </div>
+
+    <footer class="app-meta">
+      <span>V{{ APP_VERSION }}</span>
+      <span>更新于 {{ APP_UPDATED_AT }}</span>
+    </footer>
   </section>
 </template>
 <style scoped>
@@ -370,5 +376,16 @@ async function restoreField(field: string): Promise<void> {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.app-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 14px;
+  padding: 4px 0 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 </style>
