@@ -17,11 +17,16 @@ import {
 import { addWorkout, listWorkoutByDate, removeWorkout as removeWorkoutRow } from '@/data/repositories/workout'
 import { getTargets } from '@/data/repositories/targets'
 import { captureDay } from '@/application/snapshot'
+import {
+  completePendingIntake as completePendingIntakeRow,
+  type CompleteIntakeResult
+} from '@/application/intakeCompletion'
 import { sumFacts } from '@/domain/nutrition'
 import { aggregateWorkouts } from '@/domain/training'
 import { buildDaySummary, type TargetValues } from '@/domain/targets'
 import { buildWeightSeries, overnightLoss, resolveBodyWeight } from '@/domain/weight'
 import { addDays, todayIso } from '@/app/date'
+import type { IntakeCompletionInput } from '@/domain/intakeCompletion'
 import type { DayRecord, IntakeEntry, Meal, TargetsRecord, WorkoutEntry } from '@/domain/types'
 
 /** 体重窗口：够覆盖「最近一次有效晨重」的兜底查找。 */
@@ -184,6 +189,13 @@ export const useDayStore = defineStore('day', () => {
     await refresh()
   }
 
+  /** 手工补齐一条待补全记录：补份量 / 数值 → 本地重算 → 清标记。 */
+  async function completePendingIntake(id: string, input: IntakeCompletionInput): Promise<CompleteIntakeResult> {
+    const result = await completePendingIntakeRow(id, input)
+    if (result.ok) await refresh()
+    return result
+  }
+
   async function saveBody(patch: {
     weightAmKg?: number
     weightPmKg?: number
@@ -227,6 +239,7 @@ export const useDayStore = defineStore('day', () => {
     removeIntakeEntry,
     removeWorkoutEntry,
     markPending,
+    completePendingIntake,
     saveBody,
     setDate
   }

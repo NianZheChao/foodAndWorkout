@@ -197,7 +197,7 @@ export const useDraftStore = defineStore('draft', () => {
           })
           if (pending) {
             await day.markPending(id, true)
-            notices.value.push(`「${row.food}」缺数值，先记为待补全，补齐后会自动重算`)
+            notices.value.push(`「${row.food}」缺数值，先记为待补全；可在「记录 → 饮食」里点「补齐」`)
           }
         }
       } else {

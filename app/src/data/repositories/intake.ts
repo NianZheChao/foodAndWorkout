@@ -25,6 +25,10 @@ export async function addIntake(entry: Omit<IntakeEntry, 'id'>): Promise<string>
   return id
 }
 
+export async function getIntake(id: string): Promise<IntakeEntry | undefined> {
+  return db.intake.get(id)
+}
+
 export async function updateIntake(id: string, patch: Partial<IntakeEntry>): Promise<void> {
   await db.intake.update(id, toPlain(patch))
 }

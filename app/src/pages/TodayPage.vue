@@ -133,7 +133,8 @@ async function retryQueue(): Promise<void> {
       </div>
 
       <p v-if="store.summary.incomplete" class="muted" style="margin-top: 8px">
-        有 {{ store.pendingCount }} 条记录还没拿到营养数值，配好模型联网后会自动补齐。
+        有 {{ store.pendingCount }} 条记录还没拿到营养数值，配好模型联网后会自动补齐；
+        也可以去「记录 → 饮食」里手工补齐。
       </p>
     </div>
 
